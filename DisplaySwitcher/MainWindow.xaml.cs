@@ -31,6 +31,9 @@ public partial class MainWindow : Window
     public MainWindow(AppSettings settings)
     {
         InitializeComponent();
+        Rect primaryWorkArea = SystemParameters.WorkArea;
+        Left = primaryWorkArea.Left + Math.Max(0, (primaryWorkArea.Width - Width) / 2);
+        Top = primaryWorkArea.Top + Math.Max(0, (primaryWorkArea.Height - Height) / 2);
         this.settings = settings;
         backend = new(new WindowsDisplays());
         startupRegistrationError = Startup.Ensure();
@@ -264,7 +267,7 @@ public partial class MainWindow : Window
     {
         if (working || hotkeyEditor is not null && !emergency)
             return;
-        StartWork(tv ? "正在切换到电视…" : "正在恢复办公布局…");
+        StartWork(tv ? "正在切换到电视…" : "正在恢复办公布局和窗口…");
         try
         {
             if (tv)

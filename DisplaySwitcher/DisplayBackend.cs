@@ -84,11 +84,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         if (!current.Extended)
             throw new InvalidOperationException("请先在 Windows 中配置独立的多屏扩展布局，再保存办公配置。");
         native.Validate(current);
-        string config = await CaptureConfig();
-        if (!WindowsDisplays.Matches(native.Capture(), current))
-            throw new InvalidOperationException("保存期间布局发生变化，请重试。");
-        Data.Save("office.json", new Profile(current, config));
-        Data.Write("office.cfg", config);
+        StoreOffice(current, await CaptureConfig());
         return new(true, "办公布局已保存。");
     });
 
@@ -98,11 +94,11 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         var connected = native.Connected();
         Monitor target = WindowsDisplays.Resolve(tv, connected) ??
             throw new InvalidOperationException(TvUnavailable);
-        Profile office = ReadOffice();
-        native.Validate(native.Rebind(office.Layout));
         Layout before = native.Capture();
         native.Validate(before);
         string checkpoint = await CaptureConfig();
+        Profile office = before.Extended ? StoreOffice(before, checkpoint) : ReadOffice();
+        native.Validate(native.Rebind(office.Layout));
         Profile? gaming = Data.Read<Profile>("gaming.json");
         bool confirmedBefore = gaming?.Layout.Displays is [var savedTv] &&
             WindowsDisplays.Resolve(savedTv.Identity, [target]) is not null;
@@ -134,7 +130,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             if (active.Displays.Length > 1)
             {
                 started = true;
-                await ApplyAndVerify(desired, candidate);
+                await ApplyNativeFirst(desired, candidate, temporary: true);
             }
             if (!confirmedBefore && !await confirm())
             {
@@ -163,14 +159,23 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
 
     public async Task<SwitchResult> RestoreOfficeAsync() => await Exclusive(async () =>
     {
+        Layout before = native.Capture();
+        var currentWindows = WindowPositions.CaptureOfficeContent(before);
+        if (before.Extended)
+        {
+            // The user may have just changed this arrangement in Windows Settings.
+            // In extended mode F4 records the current topology without applying an older one.
+            StoreOffice(before, await CaptureConfig());
+            WindowPositions.MoveOfficeContent(before, currentWindows);
+            return new(true, "已保留 Windows 当前的扩展排列。");
+        }
         Profile office = ReadOffice();
         Layout desired = native.Rebind(office.Layout);
         native.Validate(desired);
-        Layout before = native.Capture();
         if (WindowsDisplays.Matches(before, desired))
         {
-            WindowPositions.RestoreRemembered(before);
-            return new(true, "当前已是保存的办公布局。");
+            bool moved = WindowPositions.MoveOfficeContent(before, currentWindows);
+            return new(true, moved ? "当前已是办公布局。" : "办公布局已就绪，部分窗口尚未归位。");
         }
         native.Validate(before);
         string? checkpoint = null;
@@ -178,9 +183,9 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         catch (Exception error) { Data.Log($"办公恢复使用原生检查点：{error.Message}"); }
         try
         {
-            await ApplyAndVerify(desired, SameBindings(office.Layout, desired) ? office.Config : null);
-            WindowPositions.RestoreRemembered(desired);
-            return new(true, "已恢复并校验办公布局。");
+            await ApplyNativeFirst(desired, SameBindings(office.Layout, desired) ? office.Config : null);
+            bool moved = WindowPositions.MoveOfficeContent(desired, currentWindows);
+            return new(true, moved ? "已恢复办公扩展和应用窗口。" : "扩展模式已恢复，部分窗口尚未归位。");
         }
         catch
         {
@@ -206,6 +211,16 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
 
     private static Profile ReadOffice() => Data.Read<Profile>("office.json") ??
         throw new InvalidOperationException("请先保存办公布局。");
+
+    private Profile StoreOffice(Layout current, string config)
+    {
+        if (!WindowsDisplays.Matches(native.Capture(), current))
+            throw new InvalidOperationException("Windows 显示排列正在变化，请稍后重试。");
+        var profile = new Profile(current, config);
+        Data.Save("office.json", profile);
+        Data.Write("office.cfg", config);
+        return profile;
+    }
 
     private async Task<SwitchResult> Exclusive(Func<Task<SwitchResult>> operation)
     {
@@ -260,7 +275,17 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         throw new InvalidOperationException("自动回退失败。请接通办公显示器后按 Ctrl+Alt+F9，或从桌面运行「恢复办公显示」。");
     }
 
-    private async Task ApplyAndVerify(Layout desired, string? config)
+    private async Task ApplyNativeFirst(Layout desired, string? config, bool temporary = false)
+    {
+        try { await ApplyAndVerify(desired, null, temporary); }
+        catch (Exception error) when (!string.IsNullOrWhiteSpace(config))
+        {
+            Data.Log($"原生显示切换失败，尝试 MultiMonitorTool 快照：{error.Message}");
+            await ApplyAndVerify(desired, config, temporary);
+        }
+    }
+
+    private async Task ApplyAndVerify(Layout desired, string? config, bool temporary = false)
     {
         Layout rebound = native.Rebind(desired);
         native.Validate(rebound);
@@ -284,7 +309,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         }
         desired = native.Rebind(desired);
         native.Validate(desired);
-        native.Apply(desired);
+        native.Apply(desired, temporary);
         await WaitFor(layout => WindowsDisplays.Matches(layout, desired));
     }
 

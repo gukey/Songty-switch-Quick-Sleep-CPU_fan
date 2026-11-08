@@ -346,7 +346,7 @@ public sealed class WindowsDisplays
     }
 
     public void Validate(Layout layout) => Set(layout, 0x40);
-    public void Apply(Layout layout) => Set(layout, 0x80 | 0x200);
+    public void Apply(Layout layout, bool temporary = false) => Set(layout, temporary ? 0x80u : 0x80u | 0x200u);
 
     private static void Set(Layout layout, uint action)
     {
