@@ -282,14 +282,6 @@ public partial class MainWindow : Window
                     return;
                 }
                 var target = detected.Identity;
-                Reveal();
-                if (MessageBox.Show(this, "请先开启索尼电视，并切到电脑连接的 HDMI 输入。\n\nWindows 检测到 HDMI 连接不代表电视已经亮屏。确认电视已开启后再继续；切换后需在 18 秒内确认画面，否则自动恢复。",
-                    "请确认电视已开启", MessageBoxButton.OKCancel, MessageBoxImage.Information,
-                    MessageBoxResult.Cancel) != MessageBoxResult.OK)
-                {
-                    StatusLabel.Text = "已取消切换，请开启电视并连接后再使用。";
-                    return;
-                }
                 if (!backend.HasOffice)
                 {
                     var office = await SaveOfficeAndShortcut();

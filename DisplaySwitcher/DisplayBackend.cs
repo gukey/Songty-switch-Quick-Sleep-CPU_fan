@@ -132,7 +132,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
                 started = true;
                 await ApplyNativeFirst(desired, candidate, temporary: true);
             }
-            if (!await confirm())
+            if (!confirmedBefore && !await confirm())
             {
                 await RollBack(before, checkpoint, office);
                 return new(false, "测试结束，已恢复切换前的布局。");
