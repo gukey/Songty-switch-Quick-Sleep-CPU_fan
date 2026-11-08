@@ -19,6 +19,7 @@ internal static class WindowPositions
         string ClassName, Monitor Display, Placement Placement, Rect ScreenRect = default, bool PreferPrimary = false);
     internal sealed record Snapshot(int Session, Position[] Windows);
     private sealed record Pending(Position Original, Monitor Target, IntPtr Window, IntPtr Screen, uint Show);
+    internal static IntPtr SwitcherWindow { private get; set; }
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Point { public int X, Y; }
@@ -152,15 +153,9 @@ internal static class WindowPositions
     {
         try
         {
-            int count = 0;
-            if (current.Length > 0)
-            {
-                count = Restore(layout, current);
-                Data.Log($"办公窗口核验：{count}/{current.Length}。");
-            }
-            // Keep the original desktop snapshot until the next F3 for rollback.
-            // F4 also enumerates all current windows, so it can retry without a snapshot.
-            return count == current.Length;
+            var result = RestoreWindows(layout, current, trackNewWindows: true);
+            Data.Log($"应用窗口核验：{result.Restored}/{result.Expected}。");
+            return result.Restored == result.Expected;
         }
         catch (Exception error)
         {
@@ -169,37 +164,44 @@ internal static class WindowPositions
         }
     }
 
-    internal static int Restore(Layout layout, IEnumerable<Position> windows)
+    internal static int Restore(Layout layout, IEnumerable<Position> windows) =>
+        RestoreWindows(layout, windows, trackNewWindows: false).Restored;
+
+    private static (int Restored, int Expected) RestoreWindows(Layout layout, IEnumerable<Position> windows, bool trackNewWindows)
     {
-        var pending = new List<Pending>();
+        var pending = new Dictionary<long, Pending>();
+        var expected = new HashSet<long>();
         var primary = layout.Displays.SingleOrDefault(display => display.Primary);
-        foreach (var entry in windows.Reverse())
+        void Queue(Position entry)
         {
             var target = entry.PreferPrimary ? primary : WindowsDisplays.Resolve(entry.Display.Identity, layout.Displays);
             if (target is null || !entry.PreferPrimary &&
                 (target.Width != entry.Display.Width || target.Height != entry.Display.Height ||
                  target.Rotation != entry.Display.Rotation))
-                continue;
+                return;
             var window = new IntPtr(entry.Handle);
             uint thread = GetWindowThreadProcessId(window, out uint pid);
             if (thread != entry.ThreadId || pid != entry.ProcessId ||
                 !IsDesktopApp(window, out string className) || className != entry.ClassName ||
                 ProcessStart(pid) != entry.ProcessStart || !TryPlacement(window, out var current))
-                continue;
+                return;
+            expected.Add(entry.Handle);
             var screen = MonitorFromPoint(new Point
             {
                 X = target.X + (int)target.Width / 2,
                 Y = target.Y + (int)target.Height / 2
             }, 0);
             if (screen == IntPtr.Zero)
-                continue;
+                return;
             uint show = entry.Placement.Show;
             var request = new Pending(entry, target, window, screen, show);
+            pending[entry.Handle] = request;
+            if (current.Show == show && OnTarget(request))
+                return;
             if (current.Show == ShowNormal && entry.Placement.Show == ShowNormal)
             {
                 MoveToOriginalScreen(request);
-                pending.Add(request);
-                continue;
+                return;
             }
 
             var placement = entry.Placement;
@@ -213,11 +215,11 @@ internal static class WindowPositions
                 (show != ShowMaximized || ShowWindowAsync(window, ShowMaximized));
             if (!placed)
                 Data.Log($"窗口位置恢复失败：{className} / {Marshal.GetLastWin32Error()}");
-            if (placed || show != ShowMinimized)
-                pending.Add(request);
         }
-        if (pending.Count == 0)
-            return 0;
+        foreach (var entry in windows.Reverse())
+            Queue(entry);
+        if (pending.Count == 0 && !trackNewWindows)
+            return (0, expected.Count);
 
         // Windows and some apps continue applying DPI/display changes after the paths are active.
         // Check for a short, fixed interval so normal window dragging works again once F4 completes.
@@ -226,7 +228,20 @@ internal static class WindowPositions
         for (int attempt = 0; attempt < 64; attempt++)
         {
             Thread.Sleep(250);
-            foreach (var window in pending.Where(window => !OnTarget(window)))
+            if (trackNewWindows && attempt % 4 == 3)
+            {
+                // An app can recreate or reveal its main window after the topology settles.
+                foreach (var entry in Capture(layout))
+                {
+                    if (pending.TryGetValue(entry.Handle, out var known) &&
+                        known.Original.ProcessId == entry.ProcessId && known.Original.ProcessStart == entry.ProcessStart &&
+                        known.Original.ThreadId == entry.ThreadId)
+                        continue;
+                    Queue(entry with { PreferPrimary = true });
+                    lastCorrection = attempt;
+                }
+            }
+            foreach (var window in pending.Values.Where(window => !OnTarget(window)))
             {
                 lastCorrection = attempt;
                 if (retried.Add(window.Original.Handle))
@@ -238,16 +253,22 @@ internal static class WindowPositions
         }
         if (retried.Count > 0)
             Thread.Sleep(300);
-        int restored = pending.Count(OnTarget);
-        foreach (var window in pending.Where(window => !OnTarget(window)))
+        int restored = pending.Values.Count(OnTarget);
+        foreach (var window in pending.Values.Where(window => !OnTarget(window)))
             Data.Log($"窗口未回到原屏幕：{window.Original.ClassName} → {window.Target.Name}");
-        return restored;
+        return (restored, expected.Count);
     }
 
     private static bool OnTarget(Pending window)
     {
         if (!IsIconic(window.Window))
-            return MonitorFromWindow(window.Window, 2) == window.Screen;
+        {
+            if (!IsWindowVisible(window.Window) || MonitorFromWindow(window.Window, 0) != window.Screen ||
+                !GetWindowRect(window.Window, out var bounds))
+                return false;
+            return MonitorFromPoint(new Point { X = (bounds.Left + bounds.Right) / 2,
+                Y = (bounds.Top + bounds.Bottom) / 2 }, 0) == window.Screen;
+        }
         if (window.Show != ShowMinimized || !TryPlacement(window.Window, out var placement))
             return false;
         var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
@@ -261,14 +282,24 @@ internal static class WindowPositions
         return MonitorFromPoint(center, 0) == window.Screen;
     }
 
-    internal static void CenterOnPrimary(IntPtr window)
+    internal static void CenterOnPrimary(IntPtr window, double logicalWidth, double logicalHeight)
     {
         var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfoW(MonitorFromPoint(new Point(), 1), ref info) || !GetWindowRect(window, out var bounds))
+        if (!GetMonitorInfoW(MonitorFromPoint(new Point(), 1), ref info))
             return;
-        int x = info.Work.Left + Math.Max(0, (info.Work.Right - info.Work.Left - (bounds.Right - bounds.Left)) / 2);
-        int y = info.Work.Top + Math.Max(0, (info.Work.Bottom - info.Work.Top - (bounds.Bottom - bounds.Top)) / 2);
-        SetWindowPos(window, IntPtr.Zero, x, y, 0, 0, 0x1 | 0x4 | 0x10);
+        for (int pass = 0; pass < 2; pass++)
+        {
+            uint dpi = GetDpiForWindow(window);
+            if (dpi == 0)
+                return;
+            int width = (int)Math.Round(logicalWidth * dpi / 96);
+            int height = (int)Math.Round(logicalHeight * dpi / 96);
+            int x = info.Work.Left + Math.Max(0, (info.Work.Right - info.Work.Left - width) / 2);
+            int y = info.Work.Top + Math.Max(0, (info.Work.Bottom - info.Work.Top - height) / 2);
+            SetWindowPos(window, IntPtr.Zero, x, y, width, height, 0x4 | 0x10);
+            if (dpi == GetDpiForWindow(window))
+                break;
+        }
     }
 
     private static void MoveToOriginalScreen(Pending window)
@@ -339,7 +370,7 @@ internal static class WindowPositions
     private static bool IsDesktopApp(IntPtr window, out string className)
     {
         className = "";
-        if (!IsWindowVisible(window) || GetWindowTextLengthW(window) == 0 ||
+        if (window == SwitcherWindow || !IsWindowVisible(window) || GetWindowTextLengthW(window) == 0 ||
             (GetWindowLongW(window, -20) & (0x80 | 0x08000000)) != 0 ||
             GetWindow(window, 4) != IntPtr.Zero ||
             (DwmGetWindowAttribute(window, 14, out uint cloaked, sizeof(uint)) == 0 && cloaked != 0))
@@ -385,6 +416,7 @@ internal static class WindowPositions
     [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(Point point, uint flags);
     [DllImport("user32.dll")] private static extern bool GetMonitorInfoW(IntPtr monitor, ref MonitorInfo info);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Rect rect);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool GetWindowPlacement(IntPtr window, ref Placement placement);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPlacement(IntPtr window, ref Placement placement);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool ShowWindowAsync(IntPtr window, uint command);

@@ -40,6 +40,7 @@ public partial class MainWindow : Window
         HotkeyBox.Text = HotkeyEditor.Label(settings.Key, settings.Modifiers);
 
         IntPtr handle = new WindowInteropHelper(this).EnsureHandle();
+        WindowPositions.SwitcherWindow = handle;
         HwndSource.FromHwnd(handle).AddHook(WindowMessage);
         keyboard = new(handle, settings, () => Dispatcher.BeginInvoke(() => QuickSleep(fromHotkey: true)));
         tray = new(Reveal, () => _ = Switch(true), () => _ = Switch(false), () => QuickSleep(false), Quit);
@@ -234,7 +235,7 @@ public partial class MainWindow : Window
             Show();
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
-        WindowPositions.CenterOnPrimary(new WindowInteropHelper(this).Handle);
+        PlaceOnPrimary();
         Activate();
         _ = RefreshDisplays();
     }
@@ -322,7 +323,21 @@ public partial class MainWindow : Window
             Data.Log(error.ToString());
             Report(new(false, error.Message));
         }
-        finally { EndWork(); }
+        finally
+        {
+            if (IsVisible && WindowState != WindowState.Minimized)
+                PlaceOnPrimary();
+            EndWork();
+        }
+    }
+
+    private void PlaceOnPrimary()
+    {
+        WindowState = WindowState.Normal;
+        Width = MinWidth;
+        Height = MinHeight;
+        UpdateLayout();
+        WindowPositions.CenterOnPrimary(new WindowInteropHelper(this).Handle, Width, Height);
     }
 
     private bool ConfirmTv()

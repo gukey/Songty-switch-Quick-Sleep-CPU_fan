@@ -167,7 +167,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             // The user may have just changed this arrangement in Windows Settings.
             // In extended mode F4 records the current topology without applying an older one.
             StoreOffice(before, await CaptureConfig());
-            bool moved = WindowPositions.MoveOfficeContent(before, currentWindows);
+            bool moved = await GatherOfficeWindows(before, currentWindows);
             return new(moved, moved ? "办公窗口已归位，保留 Windows 当前的扩展排列。" : "部分窗口尚未归位，请再次按 F4 重试。");
         }
         Profile office = ReadOffice();
@@ -175,7 +175,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         native.Validate(desired);
         if (WindowsDisplays.Matches(before, desired))
         {
-            bool moved = WindowPositions.MoveOfficeContent(before, currentWindows);
+            bool moved = await GatherOfficeWindows(before, currentWindows);
             return new(moved, moved ? "当前已是办公布局。" : "办公布局已就绪，部分窗口尚未归位，请再次按 F4 重试。");
         }
         native.Validate(before);
@@ -185,7 +185,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         try
         {
             await ApplyNativeFirst(desired, SameBindings(office.Layout, desired) ? office.Config : null);
-            bool moved = WindowPositions.MoveOfficeContent(desired, currentWindows);
+            bool moved = await GatherOfficeWindows(desired, currentWindows);
             return new(moved, moved ? "已恢复办公扩展和应用窗口。" : "扩展模式已恢复，部分窗口尚未归位，请再次按 F4 重试。");
         }
         catch
@@ -194,6 +194,22 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             throw;
         }
     });
+
+    private async Task<bool> GatherOfficeWindows(Layout expected, WindowPositions.Position[] windows)
+    {
+        Layout actual = native.Capture();
+        if (!WindowsDisplays.Matches(actual, expected))
+            throw new InvalidOperationException("办公显示布局仍在变化，请稍后再按 F4。");
+
+        // Run the bulk move only after Windows has selected the office primary.
+        try { await RunTool(TimeSpan.FromSeconds(2), "/MoveWindow", "Primary", "All"); }
+        catch (Exception error) { Data.Log($"MultiMonitorTool 窗口迁移失败，继续用 Windows 接口归位：{error.Message}"); }
+
+        actual = native.Capture();
+        if (!WindowsDisplays.Matches(actual, expected))
+            throw new InvalidOperationException("窗口迁移期间办公显示布局发生变化，请再次按 F4。");
+        return WindowPositions.MoveOfficeContent(actual, windows);
+    }
 
     public async Task<SwitchResult> EmergencyRestoreAsync()
     {
@@ -380,7 +396,9 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         finally { File.Delete(temp); }
     }
 
-    private async Task RunTool(params string[] arguments)
+    private Task RunTool(params string[] arguments) => RunTool(TimeSpan.FromSeconds(15), arguments);
+
+    private async Task RunTool(TimeSpan timeLimit, params string[] arguments)
     {
         if (!ToolAvailable)
             throw new InvalidOperationException("切屏组件缺失，请重新解压完整发布包。");
@@ -390,7 +408,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动 MultiMonitorTool。");
         Data.Log($"MultiMonitorTool {string.Join(" ", arguments)}");
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        using var timeout = new CancellationTokenSource(timeLimit);
         try { await process.WaitForExitAsync(timeout.Token); }
         catch (OperationCanceledException)
         {
