@@ -10,8 +10,7 @@ using System.Threading.Tasks;
 
 namespace DisplaySwitcher;
 
-public sealed record AppSettings(DisplayIdentity? Tv = null, string? ToolPath = null,
-    int Key = 0x72, uint Modifiers = 0);
+public sealed record AppSettings(DisplayIdentity? Tv = null, int Key = 0x72, uint Modifiers = 0);
 public sealed record SwitchResult(bool Success, string Message);
 public sealed record Profile(Layout Layout, string Config);
 
@@ -68,25 +67,15 @@ public interface IDisplayBackend
     Task<SwitchResult> SaveOfficeLayoutAsync();
 }
 
-public sealed class MultiMonitorToolBackend(WindowsDisplays native, Func<AppSettings> settings) : IDisplayBackend
+public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBackend
 {
+    private static readonly string ToolPath = Path.Combine(AppContext.BaseDirectory, "MultiMonitorTool", "MultiMonitorTool.exe");
+    public static bool ToolAvailable => File.Exists(ToolPath);
     private readonly SemaphoreSlim gate = new(1);
     public bool Busy => gate.CurrentCount == 0;
     public bool HasOffice => File.Exists(Path.Combine(Data.Root, "office.json"));
     public Task<Monitor[]> GetDisplaysAsync() => Task.Run(native.Connected);
     public Task<Layout> CaptureAsync() => Task.Run(native.Capture);
-
-    public static string? DefaultTool()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        for (int level = 0; directory is not null && level < 3; level++, directory = directory.Parent)
-        {
-            string candidate = Path.Combine(directory.FullName, "MultiMonitorTool.exe");
-            if (File.Exists(candidate))
-                return candidate;
-        }
-        return null;
-    }
 
     public async Task<SwitchResult> SaveOfficeLayoutAsync() => await Exclusive(async () =>
     {
@@ -351,12 +340,10 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native, Func<AppSett
 
     private async Task RunTool(params string[] arguments)
     {
-        string path = settings().ToolPath ?? DefaultTool() ??
-            throw new InvalidOperationException("请在设置中指定已有的 MultiMonitorTool.exe。");
-        if (!Path.IsPathFullyQualified(path) || !File.Exists(path))
-            throw new InvalidOperationException("MultiMonitorTool 路径无效，请重新选择。");
-        var start = new ProcessStartInfo(path) { CreateNoWindow = true, UseShellExecute = false,
-            WorkingDirectory = Path.GetDirectoryName(path)! };
+        if (!ToolAvailable)
+            throw new InvalidOperationException("切屏组件缺失，请重新解压完整发布包。");
+        var start = new ProcessStartInfo(ToolPath) { CreateNoWindow = true, UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(ToolPath)! };
         foreach (var argument in arguments)
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new InvalidOperationException("无法启动 MultiMonitorTool。");

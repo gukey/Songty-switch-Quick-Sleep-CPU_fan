@@ -6,7 +6,7 @@
 
 ![发布版实机界面，显示实时温度、ESP32 连接和开机启动状态](docs/main-window.jpg)
 
-上图为发布版窗口。CPU 和 GPU 温度来自本机传感器，橙色曲线对应 CPU，绿色曲线对应 GPU。
+上图为发布版首次运行窗口。CPU 和 GPU 温度来自本机传感器，橙色曲线对应 CPU，绿色曲线对应 GPU。开机启动状态与操作提示位于底部同一行，保存办公布局和目标电视后可使用对应的切屏按钮。
 
 <details>
 <summary>查看加上 CPU 温度的设计参考图</summary>
@@ -19,12 +19,11 @@
 
 ## 安装和首次设置
 
-1. 将 **DisplaySwitcher.exe** 和 **FanWorker.exe** 放在同一目录。自行构建时，两者会生成在 **Release** 目录。
-2. 准备已有的 **MultiMonitorTool.exe**。程序会在主程序所在目录和两级上级目录查找，也可以通过「选择 MultiMonitorTool…」手动指定。选择后点击「保存设置」。
-3. 运行 **DisplaySwitcher.exe**。程序默认收进托盘。左键单击托盘图标打开窗口，再次双击 EXE 也会打开现有窗口。如果图标在折叠区，可在 Windows 任务栏设置里设为常显。
-4. 在 Windows 显示设置中排好办公屏幕并设好主屏，然后点击「保存办公布局」。确认后会生成桌面快捷方式「恢复办公显示」。电视是否参与办公，以这次保存时的实际布局为准。
-5. 在「目标电视」里选中实际连接的电视并保存设置。本机索尼 85XR70 显示为 **SONY TV**，设备码为 **SNY07CF**。下拉框中的 **DISPLAYn** 是 Windows 的输出名。鼠标悬停可查看设备码、设备路径和可用序列号。
-6. 打开电视并选中实际连接的 HDMI 输入。按 F3 后，若电视画面正常，在 18 秒内点「画面正常，保留」。超时或点「立即恢复」会回到切换前的布局。确认后才会保存电视单屏快照。
+1. 将 **DisplaySwitcher.exe**、**FanWorker.exe** 和 **MultiMonitorTool** 子目录放在同一目录。自行构建时，完整内容会生成在 **Release** 目录，主程序会自动调用随附的切屏组件。
+2. 运行 **DisplaySwitcher.exe**。程序默认收进托盘。左键单击托盘图标打开窗口，再次双击 EXE 也会打开现有窗口。如果图标在折叠区，可在 Windows 任务栏设置里设为常显。
+3. 在 Windows 显示设置中排好办公屏幕并设好主屏，然后点击「保存办公布局」。确认后会生成桌面快捷方式「恢复办公显示」。电视是否参与办公，以这次保存时的实际布局为准。
+4. 在「目标电视」里选中实际连接的电视并保存设置。本机索尼 85XR70 显示为 **SONY TV**，设备码为 **SNY07CF**。下拉框中的 **DISPLAYn** 是 Windows 的输出名。鼠标悬停可查看设备码、设备路径和可用序列号。
+5. 打开电视并选中实际连接的 HDMI 输入。按 F3 后，若电视画面正常，在 18 秒内点「画面正常，保留」。超时或点「立即恢复」会回到切换前的布局。确认后才会保存电视单屏快照。
 
 ## 快捷键和托盘
 
@@ -50,21 +49,20 @@
 
 移动软件前，先通过托盘菜单退出。将整个程序目录移到新位置，再运行新位置的 **DisplaySwitcher.exe**。它会更新同名注册表启动项，并清理当前用户指向旧位置的同程序注册表别名和「启动」文件夹快捷方式。其他程序的启动项按各自的设置保留。
 
-若旧版 Quick-Sleep 或 CPU_fan 还在运行，可点「接管旧版」。程序会退出旧版，备份并停用它们各自的开机启动项。备份位置为 **%LOCALAPPDATA%\DisplaySwitcher\legacy-startup**。
-
 ## ESP32 温控
 
 - 在 Windows 蓝牙设置中配对 **esp32散热器**。温控助手优先尝试 **COM5**，并复用原控制端的端口扫描和重连逻辑。
 - PC 端以 **115200** 波特率发送 **CPUxx.x** 和 **GPUxx.x**。收到 ESP32 的 **ACK** 后，界面显示「已连接」和端口。只读到温度时，界面可以显示曲线，连接栏会提示「未确认连接」。
 - 传感器和蓝牙串口在独立助手进程中工作。快速关屏和显示切换由主程序负责。休眠唤醒后，助手会重新读取传感器并尝试恢复蓝牙连接。
 - 如果旧版 **CPU_fan.exe** 还在运行，主程序会等待它退出，避免两个进程争抢串口。
+- 托盘波形按最近的有效读数自动调整纵轴范围。悬停可查看 CPU 和 GPU 的实际温度。
 - 现有 ESP32 固件、蓝牙协议、OLED 显示及风扇曲线继续沿用。固件在蓝牙断开或两路温度都过期时按原逻辑停转。
 
 ## 数据和恢复
 
 | 文件 | 用途 |
 | --- | --- |
-| **settings.json** | 目标电视物理身份、电视模式热键和 MultiMonitorTool 路径 |
+| **settings.json** | 目标电视物理身份和电视模式热键 |
 | **office.json** / **office.cfg** | 办公布局的 Windows 路径快照和 MultiMonitorTool 快照 |
 | **gaming.json** / **gaming.cfg** | 首次确认后的电视单屏配置 |
 | **logs\\** | 启动注册、显示切换、回退和串口诊断日志 |
@@ -92,7 +90,7 @@ $dotnet = (Get-Command dotnet.exe).Source
 .\build.ps1 -Dotnet $dotnet -Python $python -FanDependencies 'D:\原 CPU_fan 源码目录'
 ```
 
-输出为 **Release\DisplaySwitcher.exe** 和 **Release\FanWorker.exe**。主程序自带 .NET 运行时，温控助手自带 Python 运行时及构建时提供的硬件依赖。MultiMonitorTool 和硬件监控 DLL 由使用者自行提供。分发 MultiMonitorTool 时请遵守其官方许可。 [MultiMonitorTool 官方说明](https://www.nirsoft.net/utils/multi_monitor_tool.html)
+主程序自带 .NET 运行时，温控助手自带 Python 运行时及构建时提供的硬件依赖。构建脚本首次运行会从 NirSoft 下载官方 x64 压缩包，再将其中的全部文件原样解压到 **Release\MultiMonitorTool**。NirSoft 允许在保留完整原包文件的情况下进行免费、非商业分发。 [MultiMonitorTool 官方说明](https://www.nirsoft.net/utils/multi_monitor_tool.html)
 
 | 目录 | 内容 |
 | --- | --- |

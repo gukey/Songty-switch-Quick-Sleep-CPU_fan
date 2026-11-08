@@ -33,12 +33,9 @@ public partial class App : Application
                 return;
             }
 
-            AppSettings settings;
-            try { settings = Data.Read<AppSettings>("settings.json") ?? new(); }
-            catch (Exception error) { Data.Log(error.ToString()); settings = new(); }
             if (restore)
             {
-                var backend = new MultiMonitorToolBackend(new WindowsDisplays(), () => settings);
+                var backend = new MultiMonitorToolBackend(new WindowsDisplays());
                 var result = await backend.EmergencyRestoreAsync();
                 if (!result.Success)
                     MessageBox.Show(result.Message, "恢复办公显示", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -46,6 +43,9 @@ public partial class App : Application
                 return;
             }
 
+            AppSettings settings;
+            try { settings = Data.Read<AppSettings>("settings.json") ?? new(); }
+            catch (Exception error) { Data.Log(error.ToString()); settings = new(); }
             main = new MainWindow(settings);
             MainWindow = main;
             _ = Listen();

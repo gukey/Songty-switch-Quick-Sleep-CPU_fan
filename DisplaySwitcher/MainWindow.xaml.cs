@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -10,7 +9,6 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Microsoft.Win32;
 
 namespace DisplaySwitcher;
 
@@ -23,7 +21,6 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer timer;
     private readonly Queue<FanSample> history = new();
     private AppSettings settings;
-    private string? pendingTool;
     private int pendingKey;
     private uint pendingModifiers;
     private bool working, refreshing, exiting;
@@ -37,12 +34,12 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         this.settings = settings;
-        backend = new(new WindowsDisplays(), () => this.settings);
+        backend = new(new WindowsDisplays());
         pendingKey = settings.Key;
         pendingModifiers = settings.Modifiers;
-        pendingTool = settings.ToolPath ?? MultiMonitorToolBackend.DefaultTool();
         startupRegistrationError = Startup.Ensure();
-        RenderSettings();
+        HotkeyBox.Text = KeyLabel(pendingKey, pendingModifiers);
+        ToolMissingLabel.Visibility = MultiMonitorToolBackend.ToolAvailable ? Visibility.Collapsed : Visibility.Visible;
 
         IntPtr handle = new WindowInteropHelper(this).EnsureHandle();
         HwndSource.FromHwnd(handle).AddHook(WindowMessage);
@@ -52,7 +49,7 @@ public partial class MainWindow : Window
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += (_, _) => Tick();
         timer.Start();
-        StatusLabel.Text = backend.HasOffice ? "就绪。" : "请先确认当前扩展布局，再点击「保存办公布局」。";
+        StatusLabel.Text = backend.HasOffice ? "就绪。" : "请先保存当前办公布局。";
         Tick();
     }
 
@@ -85,8 +82,6 @@ public partial class MainWindow : Window
         if (exiting)
             return;
         legacySleep = FanWorker.Running("Quick-Sleep");
-        TakeoverButton.Visibility = legacySleep || FanWorker.Running("CPU_fan")
-            ? Visibility.Visible : Visibility.Collapsed;
         fan.Check();
         if (sampleAt != DateTime.MinValue && DateTime.UtcNow - sampleAt > TimeSpan.FromSeconds(12))
         {
@@ -106,14 +101,6 @@ public partial class MainWindow : Window
         StartupBadge.Background = new SolidColorBrush(success ? Color.FromRgb(214, 244, 224) : Color.FromRgb(255, 218, 219));
         StartupLabel.Foreground = new SolidColorBrush(success ? Color.FromRgb(20, 105, 63) : Color.FromRgb(153, 37, 41));
         StartupBadge.ToolTip = success ? $"{Environment.ProcessPath} --tray" : error;
-    }
-
-    private void RenderSettings()
-    {
-        string hotkey = KeyLabel(pendingKey, pendingModifiers);
-        HotkeyBox.Text = hotkey;
-        ToolLabel.Text = pendingTool is null ? "尚未配置 MultiMonitorTool" : "MultiMonitorTool 已找到";
-        ToolLabel.ToolTip = pendingTool;
     }
 
     private void RenderHotkeys()
@@ -370,7 +357,7 @@ public partial class MainWindow : Window
         try
         {
             var changed = new AppSettings((TargetBox.SelectedItem as Monitor)?.Identity ?? settings.Tv,
-                pendingTool, pendingKey, pendingModifiers);
+                pendingKey, pendingModifiers);
             Data.Save("settings.json", changed);
             settings = changed;
             StatusLabel.Text = changed.Tv is null ? "设置已保存。电视暂未绑定。" : "设置已保存。";
@@ -383,39 +370,6 @@ public partial class MainWindow : Window
             StatusLabel.Text = $"无法保存设置：{error.Message}";
         }
         RenderHotkeys();
-    }
-
-    private void ChooseTool(object sender, RoutedEventArgs args)
-    {
-        var dialog = new OpenFileDialog { Filter = "MultiMonitorTool|MultiMonitorTool.exe", CheckFileExists = true };
-        if (dialog.ShowDialog(this) == true)
-        {
-            pendingTool = Path.GetFullPath(dialog.FileName);
-            RenderSettings();
-            StatusLabel.Text = "点击「保存设置」后使用选定的工具。";
-        }
-    }
-
-    private async void TakeoverClick(object sender, RoutedEventArgs args)
-    {
-        if (working)
-            return;
-        if (MessageBox.Show(this, "退出旧版 Quick-Sleep 和 CPU_fan，并备份、停用它们的开机启动项？",
-            "接管旧版", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
-            return;
-        StartWork("正在接管旧版…");
-        try
-        {
-            await Task.Run(Startup.RetireLegacy);
-            Tick();
-            StatusLabel.Text = "已接管旧版，旧程序的启动项已备份。";
-        }
-        catch (Exception error)
-        {
-            Data.Log(error.ToString());
-            StatusLabel.Text = $"接管未完成：{error.Message}";
-        }
-        finally { EndWork(); }
     }
 
     private void CaptureHotkey(object sender, KeyEventArgs args)
@@ -436,7 +390,7 @@ public partial class MainWindow : Window
         pendingKey = next;
         pendingModifiers = (uint)modifiers & 7;
         args.Handled = true;
-        RenderSettings();
+        HotkeyBox.Text = KeyLabel(pendingKey, pendingModifiers);
     }
 
     private static string KeyLabel(int key, uint modifiers) =>

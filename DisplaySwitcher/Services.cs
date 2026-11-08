@@ -114,43 +114,6 @@ internal static class Startup
         link.Description = "恢复已保存的办公显示布局";
         link.Save();
     }
-
-    internal static void RetireLegacy()
-    {
-        const string fanValue = "ESP32FanController";
-        using var run = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-        string? fanCommand = run?.GetValue(fanValue) as string;
-        string shortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup),
-            "Quick-Sleep-Tool.lnk");
-        string backup = Path.Combine(Data.Root, "legacy-startup");
-        Directory.CreateDirectory(backup);
-        if (fanCommand is not null)
-            File.WriteAllText(Path.Combine(backup, $"{fanValue}.txt"), fanCommand);
-        if (File.Exists(shortcut))
-            File.Copy(shortcut, Path.Combine(backup, "Quick-Sleep-Tool.lnk"), overwrite: true);
-        foreach (string name in new[] { "CPU_fan", "Quick-Sleep" })
-        {
-            foreach (var process in Process.GetProcessesByName(name))
-            {
-                using (process)
-                {
-                    if (process.HasExited)
-                        continue;
-                    if (process.CloseMainWindow() && process.WaitForExit(800))
-                        continue;
-                    try { process.Kill(entireProcessTree: true); }
-                    catch (InvalidOperationException) when (process.HasExited) { }
-                    if (!process.WaitForExit(3000))
-                        throw new InvalidOperationException($"旧版 {name} 未退出。");
-                }
-            }
-        }
-        if (fanCommand is not null)
-            run!.DeleteValue(fanValue, false);
-        if (File.Exists(shortcut))
-            File.Move(shortcut, Path.Combine(backup, "Quick-Sleep-Tool.lnk"), overwrite: true);
-        Data.Log("已接管旧版 Quick-Sleep 和 CPU_fan，原启动项已备份。");
-    }
 }
 
 internal sealed class Keyboard : IDisposable
@@ -312,7 +275,7 @@ internal sealed class FanWorker : IDisposable
             if (!legacyNotified)
             {
                 legacyNotified = true;
-                Sample?.Invoke(new(null, null, null, false, "旧版 CPU_fan 正在运行。可点击「接管旧版」。"));
+                Sample?.Invoke(new(null, null, null, false, "请退出旧版 CPU_fan，释放温控串口。"));
             }
             return;
         }
@@ -438,6 +401,13 @@ internal sealed class Tray : IDisposable
 
     private static Icon DrawWave(FanSample[] history)
     {
+        double[] temperatures = history.SelectMany(sample => new[] { sample.Cpu, sample.Gpu })
+            .OfType<double>().DefaultIfEmpty(0).ToArray();
+        double min = temperatures.Min(), max = temperatures.Max();
+        double span = Math.Max(2, max - min);
+        double floor = (min + max - span) / 2;
+        float Y(double temperature) => (float)(28 - (temperature - floor) / span * 24);
+
         using var bitmap = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var graphics = Graphics.FromImage(bitmap))
         {
@@ -466,8 +436,6 @@ internal sealed class Tray : IDisposable
         try { return (Icon)Icon.FromHandle(handle).Clone(); }
         finally { DestroyIcon(handle); }
     }
-
-    private static float Y(double temp) => (float)(29 - Math.Clamp((temp - 25) / 65, 0, 1) * 26);
 
     public void Dispose()
     {
