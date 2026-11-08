@@ -46,14 +46,14 @@
           <StackPanel Orientation="Horizontal">
             <TextBlock x:Name="TvKeyBadge" Text="F3" FontSize="23" FontWeight="Bold" Foreground="#0966DF" Margin="0,0,12,0"/>
             <StackPanel><TextBlock Text="仅显示目标电视" FontWeight="SemiBold" FontSize="16"/>
-              <TextBlock Text="关闭其他桌面输出" Foreground="#4C6485" FontSize="12"/></StackPanel>
+              <TextBlock Text="所有窗口迁到电视" Foreground="#4C6485" FontSize="12"/></StackPanel>
           </StackPanel>
         </Button>
         <Button Grid.Column="2" x:Name="OfficeButton" Click="OfficeClick" Padding="15,13" HorizontalContentAlignment="Left">
           <StackPanel Orientation="Horizontal">
             <TextBlock Text="F4" FontSize="23" FontWeight="Bold" Foreground="#0966DF" Margin="0,0,12,0"/>
             <StackPanel><TextBlock Text="恢复办公布局" FontWeight="SemiBold" FontSize="16"/>
-              <TextBlock Text="恢复已保存的主屏和排列" Foreground="#4C6485" FontSize="12"/></StackPanel>
+              <TextBlock Text="所有窗口回到主屏幕" Foreground="#4C6485" FontSize="12"/></StackPanel>
           </StackPanel>
         </Button>
       </Grid>

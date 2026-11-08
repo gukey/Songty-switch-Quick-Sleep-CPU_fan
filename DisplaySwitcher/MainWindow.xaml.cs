@@ -234,6 +234,7 @@ public partial class MainWindow : Window
             Show();
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
+        WindowPositions.CenterOnPrimary(new WindowInteropHelper(this).Handle);
         Activate();
         _ = RefreshDisplays();
     }
@@ -280,6 +281,14 @@ public partial class MainWindow : Window
                     return;
                 }
                 var target = detected.Identity;
+                Reveal();
+                if (MessageBox.Show(this, "请先开启索尼电视，并切到电脑连接的 HDMI 输入。\n\nWindows 检测到 HDMI 连接不代表电视已经亮屏。确认电视已开启后再继续；切换后需在 18 秒内确认画面，否则自动恢复。",
+                    "请确认电视已开启", MessageBoxButton.OKCancel, MessageBoxImage.Information,
+                    MessageBoxResult.Cancel) != MessageBoxResult.OK)
+                {
+                    StatusLabel.Text = "已取消切换，请开启电视并连接后再使用。";
+                    return;
+                }
                 if (!backend.HasOffice)
                 {
                     var office = await SaveOfficeAndShortcut();
@@ -300,7 +309,8 @@ public partial class MainWindow : Window
             else if (!backend.HasOffice && !emergency)
             {
                 Reveal();
-                Report(await SaveOfficeAndShortcut());
+                var saved = await SaveOfficeAndShortcut();
+                Report(saved.Success ? await backend.RestoreOfficeAsync() : saved);
             }
             else
             {
@@ -335,7 +345,7 @@ public partial class MainWindow : Window
             Margin = new Thickness(0, 0, 0, 10) });
         content.Children.Add(label);
         content.Children.Add(actions);
-        var dialog = new Window { Title = "首次电视模式测试", Content = content,
+        var dialog = new Window { Title = "确认电视画面", Content = content,
             Width = 380, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
             Topmost = true, WindowStartupLocation = WindowStartupLocation.CenterScreen, ShowInTaskbar = false,
             Background = new SolidColorBrush(Color.FromRgb(241, 247, 255)), FontSize = 14 };

@@ -132,7 +132,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
                 started = true;
                 await ApplyNativeFirst(desired, candidate, temporary: true);
             }
-            if (!confirmedBefore && !await confirm())
+            if (!await confirm())
             {
                 await RollBack(before, checkpoint, office);
                 return new(false, "测试结束，已恢复切换前的布局。");
@@ -145,7 +145,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             string config = await CaptureConfig();
             Data.Save("gaming.json", new Profile(actual, config));
             Data.Write("gaming.cfg", config);
-            return new(true, "电视模式已启用。");
+            bool moved = WindowPositions.MoveOfficeContent(actual, WindowPositions.CaptureOfficeContent(actual));
+            return new(moved, moved ? "电视模式已启用，所有应用窗口已迁到电视。" : "电视模式已启用，部分窗口未迁移，请重试或按 F4 恢复。");
         }
         catch
         {
@@ -166,8 +167,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             // The user may have just changed this arrangement in Windows Settings.
             // In extended mode F4 records the current topology without applying an older one.
             StoreOffice(before, await CaptureConfig());
-            WindowPositions.MoveOfficeContent(before, currentWindows);
-            return new(true, "已保留 Windows 当前的扩展排列。");
+            bool moved = WindowPositions.MoveOfficeContent(before, currentWindows);
+            return new(moved, moved ? "办公窗口已归位，保留 Windows 当前的扩展排列。" : "部分窗口尚未归位，请再次按 F4 重试。");
         }
         Profile office = ReadOffice();
         Layout desired = native.Rebind(office.Layout);
@@ -175,7 +176,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         if (WindowsDisplays.Matches(before, desired))
         {
             bool moved = WindowPositions.MoveOfficeContent(before, currentWindows);
-            return new(true, moved ? "当前已是办公布局。" : "办公布局已就绪，部分窗口尚未归位。");
+            return new(moved, moved ? "当前已是办公布局。" : "办公布局已就绪，部分窗口尚未归位，请再次按 F4 重试。");
         }
         native.Validate(before);
         string? checkpoint = null;
@@ -185,7 +186,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         {
             await ApplyNativeFirst(desired, SameBindings(office.Layout, desired) ? office.Config : null);
             bool moved = WindowPositions.MoveOfficeContent(desired, currentWindows);
-            return new(true, moved ? "已恢复办公扩展和应用窗口。" : "扩展模式已恢复，部分窗口尚未归位。");
+            return new(moved, moved ? "已恢复办公扩展和应用窗口。" : "扩展模式已恢复，部分窗口尚未归位，请再次按 F4 重试。");
         }
         catch
         {
@@ -205,7 +206,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             var available = native.AvailableOffice(office.Layout);
             native.Validate(available);
             await ApplyAndVerify(available, null);
-            return new(true, "紧急恢复成功，已启用当前仍可用的办公显示器。");
+            bool moved = WindowPositions.MoveOfficeContent(available, WindowPositions.CaptureOfficeContent(available));
+            return new(moved, moved ? "紧急恢复成功，所有窗口已迁到办公主屏。" : "办公屏已恢复，部分窗口未归位，请按 F4 重试。");
         });
     }
 
@@ -249,7 +251,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
 
     private async Task RollBack(Layout before, string? checkpoint, Profile office)
     {
-        foreach (var fallback in new[] { new Profile(before, checkpoint ?? ""), office })
+        // A repeated F3 while already TV-only must not roll back to an unseen TV.
+        foreach (var fallback in new[] { before.Extended ? new Profile(before, checkpoint ?? "") : office, office })
         {
             try
             {
@@ -257,7 +260,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
                 native.Validate(recovered);
                 await ApplyAndVerify(recovered, SameBindings(fallback.Layout, recovered) ? fallback.Config : null);
                 if (recovered.Extended)
-                    WindowPositions.RestoreRemembered(recovered);
+                    WindowPositions.MoveOfficeContent(recovered, WindowPositions.CaptureOfficeContent(recovered));
                 Data.Log("已验证恢复布局。");
                 return;
             }
@@ -268,6 +271,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             var available = native.AvailableOffice(office.Layout);
             native.Validate(available);
             await ApplyAndVerify(available, null);
+            WindowPositions.MoveOfficeContent(available, WindowPositions.CaptureOfficeContent(available));
             Data.Log("已验证部分办公显示器恢复。");
             return;
         }

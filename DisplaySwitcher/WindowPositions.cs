@@ -126,30 +126,23 @@ internal static class WindowPositions
         catch (Exception error) { Data.Log($"读取原窗口位置失败：{error.Message}"); }
         if (snapshot?.Session != process.SessionId)
             snapshot = null;
-        if (layout.Extended && snapshot is null)
-            return [];
-
         var originals = snapshot?.Windows.ToDictionary(window => window.Handle) ?? new Dictionary<long, Position>();
-        var positions = originals.Values.Where(window => window.Placement.Show != ShowMinimized)
-            .ToDictionary(window => window.Handle, window => window with { PreferPrimary = window.Display.Primary });
+        var positions = originals.Values.Where(window => !layout.Extended &&
+            GetWindowThreadProcessId(new IntPtr(window.Handle), out uint pid) == window.ThreadId &&
+            pid == window.ProcessId && ProcessStart(pid) == window.ProcessStart)
+            .ToDictionary(window => window.Handle, window => window with { PreferPrimary = true });
         foreach (var current in Capture(layout))
         {
-            if (originals.TryGetValue(current.Handle, out var original) &&
+            if (!layout.Extended && originals.TryGetValue(current.Handle, out var original) &&
                 original.ProcessId == current.ProcessId && original.ProcessStart == current.ProcessStart &&
                 original.ThreadId == current.ThreadId && original.ClassName == current.ClassName)
             {
                 if (current.Placement.Show == ShowMinimized && original.Placement.Show != ShowMinimized)
                     continue;
-                if (original.Display.Primary)
-                    positions[current.Handle] = current with { PreferPrimary = true };
-                else
-                {
-                    var placement = original.Placement;
-                    placement.Show = current.Placement.Show;
-                    positions[current.Handle] = original with { Placement = placement };
-                }
+                positions[current.Handle] = original with {
+                    Placement = original.Placement with { Show = current.Placement.Show }, PreferPrimary = true };
             }
-            else if (!layout.Extended && current.Placement.Show != ShowMinimized)
+            else
                 positions[current.Handle] = current with { PreferPrimary = true };
         }
         return positions.Values.ToArray();
@@ -165,7 +158,8 @@ internal static class WindowPositions
                 count = Restore(layout, current);
                 Data.Log($"办公窗口核验：{count}/{current.Length}。");
             }
-            Discard();
+            // Keep the original desktop snapshot until the next F3 for rollback.
+            // F4 also enumerates all current windows, so it can retry without a snapshot.
             return count == current.Length;
         }
         catch (Exception error)
@@ -209,7 +203,7 @@ internal static class WindowPositions
             }
 
             var placement = entry.Placement;
-            placement.Flags = AsyncPlacement;
+            placement.Flags = (placement.Flags & 2) | AsyncPlacement;
             placement.Show = show is ShowNormal or ShowMaximized ? ShowNoActivate : show;
             int x = target.X - entry.Display.X, y = target.Y - entry.Display.Y;
             placement.Normal.Offset(x, y);
@@ -250,15 +244,38 @@ internal static class WindowPositions
         return restored;
     }
 
-    private static bool OnTarget(Pending window) =>
-        IsIconic(window.Window) ? window.Show == ShowMinimized :
-            MonitorFromWindow(window.Window, 2) == window.Screen;
+    private static bool OnTarget(Pending window)
+    {
+        if (!IsIconic(window.Window))
+            return MonitorFromWindow(window.Window, 2) == window.Screen;
+        if (window.Show != ShowMinimized || !TryPlacement(window.Window, out var placement))
+            return false;
+        var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfoW(window.Screen, ref info))
+            return false;
+        // WINDOWPLACEMENT uses workspace coordinates; check the restore rectangle,
+        // not the iconic position or merely the minimized state.
+        var center = new Point {
+            X = (placement.Normal.Left + placement.Normal.Right) / 2 + info.Work.Left - info.Bounds.Left,
+            Y = (placement.Normal.Top + placement.Normal.Bottom) / 2 + info.Work.Top - info.Bounds.Top };
+        return MonitorFromPoint(center, 0) == window.Screen;
+    }
+
+    internal static void CenterOnPrimary(IntPtr window)
+    {
+        var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfoW(MonitorFromPoint(new Point(), 1), ref info) || !GetWindowRect(window, out var bounds))
+            return;
+        int x = info.Work.Left + Math.Max(0, (info.Work.Right - info.Work.Left - (bounds.Right - bounds.Left)) / 2);
+        int y = info.Work.Top + Math.Max(0, (info.Work.Bottom - info.Work.Top - (bounds.Bottom - bounds.Top)) / 2);
+        SetWindowPos(window, IntPtr.Zero, x, y, 0, 0, 0x1 | 0x4 | 0x10);
+    }
 
     private static void MoveToOriginalScreen(Pending window)
     {
         uint thread = GetWindowThreadProcessId(window.Window, out uint pid);
         if (thread != window.Original.ThreadId || pid != window.Original.ProcessId ||
-            !TryPlacement(window.Window, out var current) || window.Show == ShowMinimized)
+            !TryPlacement(window.Window, out var current))
             return;
         var info = new MonitorInfo { Size = (uint)Marshal.SizeOf<MonitorInfo>() };
         if (!GetMonitorInfoW(window.Screen, ref info))
@@ -267,11 +284,12 @@ internal static class WindowPositions
         if (workWidth <= 0 || workHeight <= 0)
             return;
 
-        var bounds = window.Original.ScreenRect;
+        var bounds = window.Original.Placement.Show == ShowMinimized
+            ? window.Original.Placement.Normal : window.Original.ScreenRect;
         bounds.Offset(window.Target.X - window.Original.Display.X, window.Target.Y - window.Original.Display.Y);
         int width = bounds.Right - bounds.Left, height = bounds.Bottom - bounds.Top;
         bool maximize = window.Show == ShowMaximized;
-        if (maximize || width <= 0 || height <= 0 || window.Original.Placement.Show != ShowNormal)
+        if (maximize || width <= 0 || height <= 0 || window.Original.Placement.Show is not (ShowNormal or ShowMinimized))
         {
             // Place the restored window inside the known target before asking Windows to maximize it again.
             bounds.Left = info.Work.Left + workWidth / 4;
@@ -283,6 +301,16 @@ internal static class WindowPositions
         height = Math.Clamp(height, 1, workHeight);
         int x = Math.Clamp(bounds.Left, info.Work.Left, info.Work.Right - width);
         int y = Math.Clamp(bounds.Top, info.Work.Top, info.Work.Bottom - height);
+        if (window.Show == ShowMinimized && IsIconic(window.Window))
+        {
+            current.Normal = new Rect { Left = x - (info.Work.Left - info.Bounds.Left),
+                Top = y - (info.Work.Top - info.Bounds.Top),
+                Right = x - (info.Work.Left - info.Bounds.Left) + width,
+                Bottom = y - (info.Work.Top - info.Bounds.Top) + height };
+            current.Flags = (current.Flags & 2) | AsyncPlacement;
+            SetWindowPlacement(window.Window, ref current);
+            return;
+        }
         if (current.Show == ShowNormal && GetWindowRect(window.Window, out var actual) &&
             actual.Left == x && actual.Top == y && actual.Right - x == width && actual.Bottom - y == height)
             return;
