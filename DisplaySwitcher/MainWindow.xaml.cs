@@ -168,12 +168,13 @@ public partial class MainWindow : Window
         FanLabel.Text = sample.Error ?? (sample.Connected ?
             $"ESP32 已连接 · {sample.Port}" : "ESP32 未确认连接");
         FanLabel.ToolTip = FanLabel.Text;
-        CpuWave.Points = Chart(history, sample => sample.Cpu);
-        GpuWave.Points = Chart(history, sample => sample.Gpu);
+        var scale = TemperatureScale.From(history);
+        CpuWave.Points = Chart(history, sample => sample.Cpu, scale);
+        GpuWave.Points = Chart(history, sample => sample.Gpu, scale);
         tray.Update(sample, history);
     }
 
-    private static PointCollection Chart(IEnumerable<FanSample> samples, Func<FanSample, double?> select)
+    private static PointCollection Chart(IEnumerable<FanSample> samples, Func<FanSample, double?> select, TemperatureScale scale)
     {
         var values = samples.Select(select).ToArray();
         var points = new PointCollection();
@@ -181,7 +182,7 @@ public partial class MainWindow : Window
         {
             if (values[index] is not double value)
                 continue;
-            double y = 32 - Math.Clamp((value - 25) / 65, 0, 1) * 30;
+            double y = 32 - scale.Fraction(value) * 30;
             points.Add(new Point(index * 168.0 / Math.Max(values.Length - 1, 1), y));
             if (values.Length == 1)
                 points.Add(new Point(168, y));

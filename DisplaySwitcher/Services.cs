@@ -251,6 +251,20 @@ internal static class SleepControl
 
 internal sealed record FanSample(double? Cpu, double? Gpu, string? Port, bool Connected, string? Error = null);
 
+internal readonly record struct TemperatureScale(double Floor, double Span)
+{
+    internal static TemperatureScale From(IEnumerable<FanSample> history)
+    {
+        double[] readings = history.SelectMany(sample => new[] { sample.Cpu, sample.Gpu })
+            .OfType<double>().DefaultIfEmpty(0).ToArray();
+        double min = readings.Min(), max = readings.Max();
+        double span = Math.Max(2, max - min);
+        return new((min + max - span) / 2, span);
+    }
+
+    internal double Fraction(double temperature) => Math.Clamp((temperature - Floor) / Span, 0, 1);
+}
+
 internal sealed class FanWorker : IDisposable
 {
     private Process? process;
@@ -401,12 +415,8 @@ internal sealed class Tray : IDisposable
 
     private static Icon DrawWave(FanSample[] history)
     {
-        double[] temperatures = history.SelectMany(sample => new[] { sample.Cpu, sample.Gpu })
-            .OfType<double>().DefaultIfEmpty(0).ToArray();
-        double min = temperatures.Min(), max = temperatures.Max();
-        double span = Math.Max(2, max - min);
-        double floor = (min + max - span) / 2;
-        float Y(double temperature) => (float)(28 - (temperature - floor) / span * 24);
+        var scale = TemperatureScale.From(history);
+        float Y(double temperature) => (float)(28 - scale.Fraction(temperature) * 24);
 
         using var bitmap = new Bitmap(32, 32, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         using (var graphics = Graphics.FromImage(bitmap))
