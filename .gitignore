@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+**/__pycache__/
+/.venv/
+/build/
+/Release/
+/FanWorker/lib/
+/MultiMonitorTool.exe
+/monitor-test-*/
+/Windows 11 风格显示器切换界面.png
