@@ -1,9 +1,9 @@
 <Window x:Class="DisplaySwitcher.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="显示器切换" Icon="Assets/QuickSleep.ico" Width="684" Height="465"
-        MinWidth="630" MinHeight="465" MaxWidth="900" MaxHeight="780"
-        WindowStartupLocation="CenterScreen" FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14">
+        Title="显示器切换" Icon="Assets/QuickSleep.ico" Width="684" Height="450"
+        ResizeMode="CanMinimize" WindowStartupLocation="CenterScreen"
+        FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14">
   <Window.Background>
     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
       <GradientStop Color="#F0F7FF" Offset="0"/>
@@ -11,7 +11,7 @@
     </LinearGradientBrush>
   </Window.Background>
   <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel Margin="22,16,22,18">
+    <StackPanel Margin="22,16,22,12">
       <DockPanel Margin="0,0,0,12">
         <Border DockPanel.Dock="Right" Background="#DCEAFF" CornerRadius="9" Padding="10,5" VerticalAlignment="Center">
           <TextBlock x:Name="ModeLabel" Text="正在检测" Foreground="#175AB1" FontWeight="SemiBold"/>
@@ -62,28 +62,39 @@
           <StackPanel>
             <TextBlock Text="目标电视" FontWeight="SemiBold" Margin="0,0,0,6"/>
             <ComboBox x:Name="TargetBox" DisplayMemberPath="Label" Height="30" VerticalContentAlignment="Center"/>
-            <TextBlock x:Name="ToolMissingLabel" Text="切屏组件缺失，请重新解压发布包。" FontSize="12"
-                       Foreground="#993529" Margin="0,7,0,0" Visibility="Collapsed"/>
+            <TextBlock x:Name="TargetStatusLabel" FontSize="12" Foreground="#993529" Margin="0,7,0,0"
+                       Visibility="Collapsed" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
           </StackPanel>
           <StackPanel Grid.Column="2">
             <TextBlock Text="电视模式快捷键" FontWeight="SemiBold" Margin="0,0,0,6"/>
-            <TextBox x:Name="HotkeyBox" IsReadOnly="True" Height="30" PreviewKeyDown="CaptureHotkey"
-                     VerticalContentAlignment="Center" Padding="6,0" ToolTip="点击后按下新的快捷键"/>
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBox x:Name="HotkeyBox" IsReadOnly="True" Height="30" Focusable="False"
+                       VerticalContentAlignment="Center" Padding="6,0"
+                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+              <Button Grid.Column="1" Content="修改" Click="EditHotkeyClick" Margin="6,0,0,0" Padding="8,3"/>
+              <Button Grid.Column="2" Click="ResetHotkeyClick" Margin="6,0,0,0" Padding="8,3"
+                      Background="#D6F4E0" BorderBrush="#A7DDB8" ToolTip="将电视模式快捷键恢复为 F3">
+                <TextBlock Text="恢复默认" Foreground="#14693F" FontWeight="SemiBold"/>
+              </Button>
+            </Grid>
             <TextBlock x:Name="HotkeyLabel" Text="F4 固定 · 右 Alt 快速关屏" FontSize="12" Foreground="#4C6485" Margin="0,7,0,0"/>
           </StackPanel>
         </Grid>
       </Border>
-      <Grid>
+      <Grid Height="25">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-        <Border x:Name="StartupBadge" CornerRadius="7" Padding="9,4" VerticalAlignment="Center">
+        <Border x:Name="StartupBadge" CornerRadius="7" Padding="9,0">
           <TextBlock x:Name="StartupLabel" Text="开机启动 · 正在检查" FontSize="12" FontWeight="SemiBold"/>
         </Border>
         <TextBlock Grid.Column="1" x:Name="StatusLabel" Foreground="#355576" Margin="10,0,10,0"
                    FontSize="12" TextTrimming="CharacterEllipsis"
                    ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"/>
-        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-          <Button x:Name="SaveOfficeButton" Content="保存办公布局" Click="SaveOfficeClick" Margin="0,0,8,0"/>
-          <Button Click="SaveSettingsClick" Background="#0966DF" BorderBrush="#0966DF">
+        <StackPanel Grid.Column="2" Orientation="Horizontal">
+          <Button x:Name="SaveOfficeButton" Content="保存办公布局" Click="SaveOfficeClick" Margin="0,0,6,0"
+                  FontSize="12" Padding="8,0"/>
+          <Button Click="SaveSettingsClick" Background="#0966DF" BorderBrush="#0966DF" FontSize="12" Padding="8,0">
             <TextBlock Text="保存设置" Foreground="White" FontWeight="SemiBold"/>
           </Button>
         </StackPanel>

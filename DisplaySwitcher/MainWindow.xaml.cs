@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -21,13 +20,12 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer timer;
     private readonly Queue<FanSample> history = new();
     private AppSettings settings;
-    private int pendingKey;
-    private uint pendingModifiers;
     private bool working, refreshing, exiting;
     private bool legacySleep;
     private readonly string? startupRegistrationError;
     private DateTime sampleAt, sleepAt;
     private Window? test;
+    private HotkeyEditor? hotkeyEditor;
     private bool emergencyPending;
 
     public MainWindow(AppSettings settings)
@@ -35,11 +33,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         this.settings = settings;
         backend = new(new WindowsDisplays());
-        pendingKey = settings.Key;
-        pendingModifiers = settings.Modifiers;
         startupRegistrationError = Startup.Ensure();
-        HotkeyBox.Text = KeyLabel(pendingKey, pendingModifiers);
-        ToolMissingLabel.Visibility = MultiMonitorToolBackend.ToolAvailable ? Visibility.Collapsed : Visibility.Visible;
+        HotkeyBox.Text = HotkeyEditor.Label(settings.Key, settings.Modifiers);
 
         IntPtr handle = new WindowInteropHelper(this).EnsureHandle();
         HwndSource.FromHwnd(handle).AddHook(WindowMessage);
@@ -49,7 +44,7 @@ public partial class MainWindow : Window
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += (_, _) => Tick();
         timer.Start();
-        StatusLabel.Text = backend.HasOffice ? "就绪。" : "请先保存当前办公布局。";
+        StatusLabel.Text = backend.HasOffice ? "就绪。" : "首次切换会记录当前扩展布局。";
         Tick();
     }
 
@@ -58,6 +53,16 @@ public partial class MainWindow : Window
         if (message == 0x312)
         {
             handled = true;
+            if (hotkeyEditor is not null)
+            {
+                switch (wParam.ToInt64())
+                {
+                    case 1: hotkeyEditor.Record(settings.Key, settings.Modifiers); break;
+                    case 2: hotkeyEditor.Record(0x73, 0); break;
+                    case 3: hotkeyEditor.Record(0x78, 3); break;
+                }
+                return IntPtr.Zero;
+            }
             switch (wParam.ToInt64())
             {
                 case 1: _ = Switch(true); break;
@@ -105,7 +110,8 @@ public partial class MainWindow : Window
 
     private void RenderHotkeys()
     {
-        TvKeyBadge.Text = keyboard.TvRegistered ? KeyLabel(settings.Key, settings.Modifiers) : "—";
+        TvKeyBadge.Text = keyboard.TvRegistered ? HotkeyEditor.Label(settings.Key, settings.Modifiers) : "—";
+        TvKeyBadge.FontSize = TvKeyBadge.Text.Length > 7 ? 14 : 23;
         string office = keyboard.OfficeRegistered ? "F4 固定" : "F4 被占用";
         string sleep = legacySleep ? "右 Alt 由旧版处理" : keyboard.SleepRegistered ? "右 Alt 快速关屏" : "右 Alt 未启用";
         HotkeyLabel.Text = $"{office} · {sleep}" + (keyboard.TvRegistered ? "" : " · 电视热键被占用");
@@ -123,10 +129,10 @@ public partial class MainWindow : Window
             Layout layout = await backend.CaptureAsync();
             if (working || exiting)
                 return;
+            Monitor? availableTv = FindTv(displays, settings.Tv, out string? targetError);
             Monitor? existing = TargetBox.SelectedItem as Monitor;
             Monitor? selected = existing is not null ? WindowsDisplays.Resolve(existing.Identity, displays) :
-                settings.Tv is not null ? WindowsDisplays.Resolve(settings.Tv, displays) :
-                displays.Where(monitor => monitor.Identity.Product == "SNY07CF").Take(2).ToArray() is [var sony] ? sony : null;
+                availableTv;
             if (!TargetBox.IsDropDownOpen)
             {
                 if (TargetBox.ItemsSource is not Monitor[] old || !old.SequenceEqual(displays))
@@ -135,12 +141,17 @@ public partial class MainWindow : Window
                 TargetBox.SelectedItem = selected is null ? null : WindowsDisplays.Resolve(selected.Identity, items);
                 TargetBox.ToolTip = selected?.Details;
             }
-            ModeLabel.Text = layout.Displays.Length == 1 && settings.Tv is not null &&
-                WindowsDisplays.Resolve(settings.Tv, layout.Displays) is not null ? "电视模式" :
+            string? targetStatus = MultiMonitorToolBackend.ToolAvailable ? targetError : "切屏组件缺失，请重新解压发布包。";
+            TargetStatusLabel.Text = targetStatus;
+            TargetStatusLabel.Visibility = targetStatus is null ? Visibility.Collapsed : Visibility.Visible;
+            var target = availableTv?.Identity;
+            ModeLabel.Text = layout.Displays.Length == 1 && target is not null &&
+                WindowsDisplays.Resolve(target, layout.Displays) is not null ? "电视模式" :
                 layout.Extended ? "扩展模式" : layout.Displays.Length > 1 ? "镜像／混合模式" : "单屏模式";
+            bool officeReady = backend.HasOffice || layout.Extended;
             SaveOfficeButton.IsEnabled = layout.Extended;
-            OfficeButton.IsEnabled = backend.HasOffice;
-            TvButton.IsEnabled = backend.HasOffice && settings.Tv is not null;
+            OfficeButton.IsEnabled = officeReady;
+            TvButton.IsEnabled = true;
         }
         catch (Exception error)
         {
@@ -148,6 +159,30 @@ public partial class MainWindow : Window
             Data.Log(error.ToString());
         }
         finally { refreshing = false; }
+    }
+
+    private static Monitor? FindTv(Monitor[] displays, DisplayIdentity? saved, out string? error)
+    {
+        error = MultiMonitorToolBackend.TvUnavailable;
+        if (saved is not null)
+        {
+            var bound = WindowsDisplays.Resolve(saved, displays);
+            if (bound is not null)
+                error = null;
+            return bound;
+        }
+
+        var matches = displays.Where(monitor =>
+            monitor.Identity.Product.StartsWith("SNY", StringComparison.OrdinalIgnoreCase) &&
+            monitor.Name.Equals("SONY TV", StringComparison.OrdinalIgnoreCase)).Take(2).ToArray();
+        if (matches is [var sony])
+        {
+            error = null;
+            return sony;
+        }
+        if (matches.Length > 1)
+            error = "检测到多台索尼电视，请选择目标并保存设置。";
+        return null;
     }
 
     private void RenderFan(FanSample sample, bool fresh = true)
@@ -227,27 +262,52 @@ public partial class MainWindow : Window
 
     private async Task Switch(bool tv, bool emergency = false)
     {
-        if (working)
+        if (working || hotkeyEditor is not null && !emergency)
             return;
-        if (tv && settings.Tv is null)
-        {
-            Reveal();
-            StatusLabel.Text = "请选择目标电视并保存设置。";
-            return;
-        }
-        if (tv && !backend.HasOffice)
-        {
-            Reveal();
-            StatusLabel.Text = "首次切换前请保存当前办公布局。";
-            return;
-        }
         StartWork(tv ? "正在切换到电视…" : "正在恢复办公布局…");
         try
         {
-            SwitchResult result = tv
-                ? await backend.SwitchToTvAsync(settings.Tv!, () => Dispatcher.InvokeAsync(ConfirmTv).Task)
-                : emergency ? await backend.EmergencyRestoreAsync() : await backend.RestoreOfficeAsync();
-            Report(result);
+            if (tv)
+            {
+                var displays = await backend.GetDisplaysAsync();
+                var detected = FindTv(displays, settings.Tv, out string? targetError);
+                if (detected is null)
+                {
+                    Report(new(false, targetError!));
+                    return;
+                }
+                var target = detected.Identity;
+                if (!backend.HasOffice)
+                {
+                    var office = await SaveOfficeAndShortcut();
+                    if (!office.Success || emergencyPending)
+                    {
+                        Report(office);
+                        return;
+                    }
+                }
+                if (settings.Tv is null)
+                {
+                    var changed = settings with { Tv = target };
+                    Data.Save("settings.json", changed);
+                    settings = changed;
+                }
+                Report(await backend.SwitchToTvAsync(target, () => Dispatcher.InvokeAsync(ConfirmTv).Task));
+            }
+            else if (!backend.HasOffice && !emergency)
+            {
+                Reveal();
+                Report(await SaveOfficeAndShortcut());
+            }
+            else
+            {
+                Report(emergency ? await backend.EmergencyRestoreAsync() : await backend.RestoreOfficeAsync());
+            }
+        }
+        catch (Exception error)
+        {
+            Data.Log(error.ToString());
+            Report(new(false, error.Message));
         }
         finally { EndWork(); }
     }
@@ -327,38 +387,31 @@ public partial class MainWindow : Window
         if (MessageBox.Show(this, text, "保存办公布局", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
             return;
         StartWork("正在保存办公布局…");
-        try
-        {
-            var result = await backend.SaveOfficeLayoutAsync();
-            Report(result);
-            if (result.Success)
-            {
-                try { Startup.CreateRecoveryShortcut(); }
-                catch (Exception error)
-                {
-                    Data.Log(error.ToString());
-                    StatusLabel.Text = "办公布局已保存，桌面紧急恢复快捷方式创建失败。";
-                }
-            }
-        }
+        try { Report(await SaveOfficeAndShortcut()); }
         finally { EndWork(); }
+    }
+
+    private async Task<SwitchResult> SaveOfficeAndShortcut()
+    {
+        var result = await backend.SaveOfficeLayoutAsync();
+        if (!result.Success)
+            return result;
+        try { Startup.CreateRecoveryShortcut(); }
+        catch (Exception error)
+        {
+            Data.Log(error.ToString());
+            return new(true, "办公布局已保存，桌面紧急恢复快捷方式创建失败。");
+        }
+        return result;
     }
 
     private void SaveSettingsClick(object sender, RoutedEventArgs args)
     {
         if (working)
             return;
-        if (!keyboard.SetTv(pendingKey, pendingModifiers))
-        {
-            StatusLabel.Text = "快捷键被占用或保留。请选择其他按键组合。";
-            RenderHotkeys();
-            return;
-        }
-        AppSettings previous = settings;
         try
         {
-            var changed = new AppSettings((TargetBox.SelectedItem as Monitor)?.Identity ?? settings.Tv,
-                pendingKey, pendingModifiers);
+            var changed = settings with { Tv = (TargetBox.SelectedItem as Monitor)?.Identity ?? settings.Tv };
             Data.Save("settings.json", changed);
             settings = changed;
             StatusLabel.Text = changed.Tv is null ? "设置已保存。电视暂未绑定。" : "设置已保存。";
@@ -366,41 +419,55 @@ public partial class MainWindow : Window
         }
         catch (Exception error)
         {
-            keyboard.SetTv(previous.Key, previous.Modifiers);
             Data.Log(error.ToString());
             StatusLabel.Text = $"无法保存设置：{error.Message}";
         }
-        RenderHotkeys();
     }
 
-    private void CaptureHotkey(object sender, KeyEventArgs args)
+    private void EditHotkeyClick(object sender, RoutedEventArgs args)
     {
-        var key = args.Key == Key.System ? args.SystemKey : args.Key;
-        if (key is Key.Tab or Key.Escape or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift
-            or Key.LeftCtrl or Key.RightCtrl or Key.LWin or Key.RWin or Key.None)
+        if (working)
             return;
-        int next = KeyInterop.VirtualKeyFromKey(key);
-        var modifiers = System.Windows.Input.Keyboard.Modifiers;
-        if ((modifiers & ModifierKeys.Windows) != 0 ||
-            (modifiers == ModifierKeys.None && (key < Key.F1 || key > Key.F24)))
-        {
-            args.Handled = true;
-            StatusLabel.Text = "请使用功能键，或用 Ctrl、Alt、Shift 加其他键。";
-            return;
-        }
-        pendingKey = next;
-        pendingModifiers = (uint)modifiers & 7;
-        args.Handled = true;
-        HotkeyBox.Text = KeyLabel(pendingKey, pendingModifiers);
+        hotkeyEditor = new HotkeyEditor(this, settings, SaveTvHotkey);
+        try { hotkeyEditor.ShowDialog(); }
+        finally { hotkeyEditor = null; }
     }
 
-    private static string KeyLabel(int key, uint modifiers) =>
-        ((modifiers & 2) != 0 ? "Ctrl+" : "") + ((modifiers & 1) != 0 ? "Alt+" : "") +
-        ((modifiers & 4) != 0 ? "Shift+" : "") + KeyInterop.KeyFromVirtualKey(key);
+    private void ResetHotkeyClick(object sender, RoutedEventArgs args)
+    {
+        if (!working)
+            StatusLabel.Text = SaveTvHotkey(0x72, 0) ?? "电视快捷键已恢复为 F3。";
+    }
+
+    private string? SaveTvHotkey(int key, uint modifiers)
+    {
+        if (!keyboard.SetTv(key, modifiers))
+        {
+            RenderHotkeys();
+            return "此快捷键已被占用或保留，请换一个。";
+        }
+
+        try
+        {
+            var changed = settings with { Key = key, Modifiers = modifiers };
+            Data.Save("settings.json", changed);
+            settings = changed;
+            HotkeyBox.Text = HotkeyEditor.Label(key, modifiers);
+            StatusLabel.Text = $"电视快捷键已保存为 {HotkeyBox.Text}。";
+            return null;
+        }
+        catch (Exception error)
+        {
+            keyboard.SetTv(settings.Key, settings.Modifiers);
+            Data.Log(error.ToString());
+            return $"无法保存快捷键：{error.Message}";
+        }
+        finally { RenderHotkeys(); }
+    }
 
     private async void QuickSleep(bool fromHotkey)
     {
-        if (working || DateTime.UtcNow - sleepAt < TimeSpan.FromSeconds(3))
+        if (working || hotkeyEditor is not null || DateTime.UtcNow - sleepAt < TimeSpan.FromSeconds(3))
             return;
         if (fromHotkey && legacySleep)
             return;

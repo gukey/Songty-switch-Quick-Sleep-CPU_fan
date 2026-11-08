@@ -129,7 +129,7 @@ public sealed class WindowsDisplays
     public Monitor[] Connected()
     {
         var (paths, modes) = Query(1);
-        return paths.Where(path => path.Target.Available != 0 || (path.Flags & Active) != 0)
+        return paths.Where(path => path.Target.Available != 0)
             .GroupBy(path => (path.Target.Adapter, path.Target.Id))
             .Select(group => Describe(group.OrderByDescending(path => (path.Flags & Active) != 0).First(), modes))
             .Where(display => !string.IsNullOrWhiteSpace(display.Identity.Path)).ToArray();

@@ -69,6 +69,7 @@ public interface IDisplayBackend
 
 public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBackend
 {
+    internal const string TvUnavailable = "未检测到电视，请开启电视并连接 HDMI 后再试。";
     private static readonly string ToolPath = Path.Combine(AppContext.BaseDirectory, "MultiMonitorTool", "MultiMonitorTool.exe");
     public static bool ToolAvailable => File.Exists(ToolPath);
     private readonly SemaphoreSlim gate = new(1);
@@ -94,17 +95,19 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
     public async Task<SwitchResult> SwitchToTvAsync(DisplayIdentity tv, Func<Task<bool>> confirm) =>
         await Exclusive(async () =>
     {
-        Profile office = ReadOffice();
-        native.Validate(native.Rebind(office.Layout));
         var connected = native.Connected();
         Monitor target = WindowsDisplays.Resolve(tv, connected) ??
-            throw new InvalidOperationException("电视未连接，或无法唯一识别。请检查信号或重新绑定。");
+            throw new InvalidOperationException(TvUnavailable);
+        Profile office = ReadOffice();
+        native.Validate(native.Rebind(office.Layout));
         Layout before = native.Capture();
         native.Validate(before);
         string checkpoint = await CaptureConfig();
         Profile? gaming = Data.Read<Profile>("gaming.json");
         bool confirmedBefore = gaming?.Layout.Displays is [var savedTv] &&
             WindowsDisplays.Resolve(savedTv.Identity, [target]) is not null;
+        if (before.Extended)
+            WindowPositions.Remember(before);
         bool started = false;
         try
         {
@@ -141,6 +144,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             Layout actual = native.Capture();
             if (!WindowsDisplays.Matches(actual, desired))
                 throw new InvalidOperationException("电视显示状态在确认期间发生变化。");
+            if (WindowsDisplays.Resolve(tv, native.Connected()) is null)
+                throw new InvalidOperationException(TvUnavailable);
             string config = await CaptureConfig();
             Data.Save("gaming.json", new Profile(actual, config));
             Data.Write("gaming.cfg", config);
@@ -150,6 +155,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         {
             if (started)
                 await RollBack(before, checkpoint, office);
+            else if (before.Extended)
+                WindowPositions.Discard();
             throw;
         }
     });
@@ -161,7 +168,10 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         native.Validate(desired);
         Layout before = native.Capture();
         if (WindowsDisplays.Matches(before, desired))
+        {
+            WindowPositions.RestoreRemembered(before);
             return new(true, "当前已是保存的办公布局。");
+        }
         native.Validate(before);
         string? checkpoint = null;
         try { checkpoint = await CaptureConfig(); }
@@ -169,6 +179,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         try
         {
             await ApplyAndVerify(desired, SameBindings(office.Layout, desired) ? office.Config : null);
+            WindowPositions.RestoreRemembered(desired);
             return new(true, "已恢复并校验办公布局。");
         }
         catch
@@ -230,6 +241,8 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
                 Layout recovered = native.Rebind(fallback.Layout);
                 native.Validate(recovered);
                 await ApplyAndVerify(recovered, SameBindings(fallback.Layout, recovered) ? fallback.Config : null);
+                if (recovered.Extended)
+                    WindowPositions.RestoreRemembered(recovered);
                 Data.Log("已验证恢复布局。");
                 return;
             }
