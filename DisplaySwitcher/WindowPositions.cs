@@ -293,7 +293,12 @@ internal static class WindowPositions
             SetWindowPlacement(window.Window, ref current);
         }
         const uint asyncWithoutActivation = 0x4000 | 0x200 | 0x10 | 0x4;
-        if (SetWindowPos(window.Window, IntPtr.Zero, x, y, width, height, asyncWithoutActivation) && maximize)
+        // Our WPF windows own their logical size. Replaying a physical size captured
+        // on another DPI can shrink the fixed layout after the monitor transition.
+        uint flags = asyncWithoutActivation;
+        if (pid == (uint)Environment.ProcessId)
+            flags |= 0x1; // SWP_NOSIZE; WPF handles the destination monitor's DPI.
+        if (SetWindowPos(window.Window, IntPtr.Zero, x, y, width, height, flags) && maximize)
             ShowWindowAsync(window.Window, ShowMaximized);
     }
 
