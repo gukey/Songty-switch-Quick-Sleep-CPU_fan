@@ -19,6 +19,8 @@
 
 ## 安装和首次设置
 
+可在 GitHub Releases 下载 `DisplaySwitcher.exe` 或完整运行包。完整功能需要同目录的 `FanWorker.exe` 与 `MultiMonitorTool` 文件夹。默认程序图标为源码中的 `DisplaySwitcher/Assets/imageres_1405.ico`。
+
 1. 将 **DisplaySwitcher.exe**、**FanWorker.exe** 和 **MultiMonitorTool** 子目录放在同一目录。自行构建时，完整内容会生成在 **Release** 目录，主程序会自动调用随附的切屏组件。
 2. 运行 **DisplaySwitcher.exe**。程序默认收进托盘。左键单击托盘图标打开窗口，再次双击 EXE 也会打开现有窗口。如果图标在折叠区，可在 Windows 任务栏设置里设为常显。
 3. 处于平时使用的多屏扩展布局时，可直接按 **F3**。程序会识别唯一的 **SONY TV**，每次切换前都会读取并记录 Windows 当前的扩展排列。首次准备办公布局时会生成桌面快捷方式「恢复办公显示」。

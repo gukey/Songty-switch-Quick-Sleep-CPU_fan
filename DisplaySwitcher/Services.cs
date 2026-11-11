@@ -388,7 +388,7 @@ internal sealed class Tray : IDisposable
     internal Tray(Action show, Action tv, Action office, Action sleep, Action quit)
     {
         using var stream = System.Windows.Application.GetResourceStream(
-            new Uri("pack://application:,,,/Assets/QuickSleep.ico")).Stream;
+            new Uri("pack://application:,,,/Assets/imageres_1405.ico")).Stream;
         using var resource = new Icon(stream);
         fallback = (Icon)resource.Clone();
         var menu = new ContextMenuStrip();

@@ -6,10 +6,10 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <ApplicationIcon>Assets\QuickSleep.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\imageres_1405.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
-    <Resource Include="Assets\QuickSleep.ico" />
+    <Resource Include="Assets\imageres_1405.ico" />
   </ItemGroup>
 </Project>
