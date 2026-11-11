@@ -298,7 +298,7 @@ internal sealed class FanWorker : IDisposable
             return;
         Stop();
         retryAfter = DateTime.UtcNow.AddSeconds(15);
-        string file = Path.Combine(AppContext.BaseDirectory, "FanWorker.exe");
+        string file = Path.Combine(BundledComponents.Root, "FanWorker.exe");
         if (!File.Exists(file))
         {
             Sample?.Invoke(new(null, null, null, false, "未找到 FanWorker.exe。"));

@@ -70,7 +70,7 @@ public interface IDisplayBackend
 public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBackend
 {
     internal const string TvUnavailable = "未检测到电视，请开启电视并连接 HDMI 后再试。";
-    private static readonly string ToolPath = Path.Combine(AppContext.BaseDirectory, "MultiMonitorTool", "MultiMonitorTool.exe");
+    private static readonly string ToolPath = Path.Combine(BundledComponents.Root, "MultiMonitorTool", "MultiMonitorTool.exe");
     public static bool ToolAvailable => File.Exists(ToolPath);
     private readonly SemaphoreSlim gate = new(1);
     public bool Busy => gate.CurrentCount == 0;

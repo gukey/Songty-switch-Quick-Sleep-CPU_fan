@@ -11,5 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Resource Include="Assets\imageres_1405.ico" />
+    <EmbeddedResource Include="$(BundledComponentsArchive)" LogicalName="DisplaySwitcher.Components.zip"
+                      Condition="'$(BundledComponentsArchive)' != ''" />
   </ItemGroup>
 </Project>

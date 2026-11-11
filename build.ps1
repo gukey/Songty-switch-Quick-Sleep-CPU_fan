@@ -28,21 +28,23 @@ try {
     & $Python @fanArgs
     if ($LASTEXITCODE -ne 0) { throw '温控助手构建失败。' }
 
+    $componentStage = Join-Path $workspaceBuild ('components-' + [Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $componentStage | Out-Null
+    Copy-Item -LiteralPath (Join-Path $workspaceBuild 'fan\FanWorker.exe') -Destination $componentStage
+    Expand-Archive -LiteralPath $monitorArchive -DestinationPath (Join-Path $componentStage 'MultiMonitorTool')
+    $componentArchive = Join-Path $workspaceBuild 'components.zip'
+    Compress-Archive -Path (Join-Path $componentStage '*') -DestinationPath $componentArchive -Force
+
     $publishArgs = @(
         'publish', '.\DisplaySwitcher\DisplaySwitcher.csproj', '-c', 'Release', '-r', 'win-x64',
         '--self-contained', 'true', '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
         '-p:EnableCompressionInSingleFile=true',
+        "-p:BundledComponentsArchive=$componentArchive",
         '-p:DebugType=None', '-p:DebugSymbols=false', '-o', $output
     )
     & $Dotnet @publishArgs
     if ($LASTEXITCODE -ne 0) { throw '显示器切换主程序构建失败。' }
 
-    Copy-Item -LiteralPath (Join-Path $workspaceBuild 'fan\FanWorker.exe') -Destination $output -Force
-    $monitorOutput = Join-Path $output 'MultiMonitorTool'
-    Expand-Archive -LiteralPath $monitorArchive -DestinationPath $monitorOutput -Force
-    if (-not (Test-Path -LiteralPath (Join-Path $monitorOutput 'MultiMonitorTool.exe'))) {
-        throw 'MultiMonitorTool 发布包缺少可执行文件。'
-    }
     Write-Output (Join-Path $output 'DisplaySwitcher.exe')
 }
 finally {

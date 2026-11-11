@@ -19,9 +19,9 @@
 
 ## 安装和首次设置
 
-可在 GitHub Releases 下载 `DisplaySwitcher.exe` 或完整运行包。完整功能需要同目录的 `FanWorker.exe` 与 `MultiMonitorTool` 文件夹。默认程序图标为源码中的 `DisplaySwitcher/Assets/imageres_1405.ico`。
+可在 GitHub Releases 下载单文件 `DisplaySwitcher.exe`。所需运行时、温控助手和 MultiMonitorTool 均已内置，首次启动自动释放到 `%LOCALAPPDATA%\DisplaySwitcher\components`，按内容校验并复用。默认程序图标为源码中的 `DisplaySwitcher/Assets/imageres_1405.ico`。
 
-1. 将 **DisplaySwitcher.exe**、**FanWorker.exe** 和 **MultiMonitorTool** 子目录放在同一目录。自行构建时，完整内容会生成在 **Release** 目录，主程序会自动调用随附的切屏组件。
+1. 下载 **DisplaySwitcher.exe** 并双击运行。自行构建时，单文件程序生成在 **Release** 目录。
 2. 运行 **DisplaySwitcher.exe**。程序默认收进托盘。左键单击托盘图标打开窗口，再次双击 EXE 也会打开现有窗口。如果图标在折叠区，可在 Windows 任务栏设置里设为常显。
 3. 处于平时使用的多屏扩展布局时，可直接按 **F3**。程序会识别唯一的 **SONY TV**，每次切换前都会读取并记录 Windows 当前的扩展排列。首次准备办公布局时会生成桌面快捷方式「恢复办公显示」。
 4. 打开电视并选中实际连接的 HDMI 输入。首次切到该电视时，在 18 秒内点「画面正常，保留」。超时或点「立即恢复」会回到切换前的布局。验证通过后，按 F3 会直接切换。
@@ -80,7 +80,7 @@ F3 与 F4 都会迁移全部可控制的应用窗口。最小化窗口保持最�
 | 电视黑屏或选错输入 | 首次画面测试超时会自动回退。平时可按 **F4**、**Ctrl+Alt+F9** 或使用桌面「恢复办公显示」。 |
 | F4 没有恢复预期排列 | 确认所有办公屏在线。在 Windows 中重新排好扩展布局后再保存。镜像或混合模式不能保存为办公扩展布局。 |
 | 开机启动为红色 | 悬停查看原因。路径变化时从正确位置重新运行；如 Windows 禁用了该项，请在「启动应用」中启用。 |
-| 托盘有图标、温度显示 **--** | 查看界面提示和日志。可以运行 **FanWorker.exe --probe** 读取一次传感器，用于排查。 |
+| 托盘有图标、温度显示 **--** | 查看界面提示和日志。可以在组件缓存目录运行 **FanWorker.exe --probe** 读取一次传感器，用于排查。 |
 | 温度正常、ESP32 未连接 | 检查蓝牙配对、串口和旧版 CPU_fan 是否仍在运行。 |
 | 右 Alt 后屏幕关闭但电脑仍工作 | 软件发送关屏请求。是否进入 S0 现代待机以及能否通过键盘唤醒，由 Windows、电源状态和设备决定。 |
 
@@ -96,7 +96,7 @@ $dotnet = (Get-Command dotnet.exe).Source
 .\build.ps1 -Dotnet $dotnet -Python $python -FanDependencies 'D:\原 CPU_fan 源码目录'
 ```
 
-主程序自带 .NET 运行时，温控助手自带 Python 运行时及构建时提供的硬件依赖。构建脚本首次运行会从 NirSoft 下载官方 x64 压缩包，再将其中的全部文件原样解压到 **Release\MultiMonitorTool**。NirSoft 允许在保留完整原包文件的情况下进行免费、非商业分发。 [MultiMonitorTool 官方说明](https://www.nirsoft.net/utils/multi_monitor_tool.html)
+主程序自带 .NET 运行时，温控助手自带 Python 运行时及构建时提供的硬件依赖。构建脚本将温控助手与 NirSoft 官方 x64 压缩包中的全部文件内嵌到主程序，输出单个 EXE。运行时自动准备内置组件，保留 MultiMonitorTool 原包文件及许可说明。NirSoft 允许在保留完整原包文件的情况下进行免费、非商业分发。 [MultiMonitorTool 官方说明](https://www.nirsoft.net/utils/multi_monitor_tool.html)
 
 | 目录 | 内容 |
 | --- | --- |
