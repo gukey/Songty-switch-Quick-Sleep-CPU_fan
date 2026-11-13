@@ -1,8 +1,8 @@
 <Window x:Class="DisplaySwitcher.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="显示器切换" Icon="Assets/imageres_1405.ico" Width="684" Height="450"
-        MinWidth="684" MinHeight="450" MaxWidth="684" MaxHeight="450"
+        Title="显示器切换" Icon="Assets/imageres_1405.ico" Width="684" Height="510"
+        MinWidth="684" MinHeight="510" MaxWidth="684" MaxHeight="510"
         ResizeMode="CanMinimize" WindowStartupLocation="Manual"
         FontFamily="Segoe UI, Microsoft YaHei UI" FontSize="14">
   <Window.Background>
@@ -83,6 +83,13 @@
             <TextBlock x:Name="HotkeyLabel" Text="F4 固定 · 右 Alt 快速关屏" FontSize="12" Foreground="#4C6485" Margin="0,7,0,0"/>
           </StackPanel>
         </Grid>
+      </Border>
+      <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="12,8">
+        <DockPanel>
+          <Button x:Name="XunleiWeb" DockPanel.Dock="Right" Content="迅雷控制中心" Click="XunleiWebClick" Padding="8,3"/>
+          <Button x:Name="XunleiToggle" DockPanel.Dock="Right" Content="开始监听" Click="XunleiToggleClick" Margin="8,0,8,0" Padding="8,3"/>
+          <TextBlock x:Name="XunleiLabel" Text="迅雷服务正在启动…" FontSize="12" TextTrimming="CharacterEllipsis"/>
+        </DockPanel>
       </Border>
       <Grid Height="25">
         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>

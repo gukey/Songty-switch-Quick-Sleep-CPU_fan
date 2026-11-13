@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="action-token" content="{{ token }}">
+  <title>迅雷磁力导入 · 控制中心</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="stylesheet" href="/static/app.css"><script src="/static/app.js" defer></script>
+</head>
+<body>
+<main>
+  <header class="panel masthead">
+    <div class="brand"><img class="logo" src="/icon.svg" alt="磁铁与闪电"><div><h1>迅雷磁力导入 <span>控制中心</span></h1><p>只下载主视频，让每次导入都有记录。</p></div></div>
+    <div class="header-meta"><div><span>提交到</span><strong id="target">192.168.1.5</strong></div><div><span>运行时间</span><strong id="uptime">连接中</strong></div><div><span>程序版本</span><strong>4.0.0</strong></div></div>
+  </header>
+  <section class="health-banner" id="healthBanner"><div><h2 id="healthTitle">正在连接本地服务</h2><p id="healthText">读取任务队列与迅雷状态…</p></div><div class="badges"><span class="badge" id="apiBadge">API 检查中</span><span class="badge" id="dbBadge">SQLite 检查中</span><span class="badge neutral">仅主视频</span></div></section>
+  <section class="metrics"><article class="panel metric"><i></i><p>待处理任务</p><strong id="pending">—</strong><small>解析后只提交符合规则的文件</small></article><article class="panel metric blue"><i></i><p>已成功提交</p><strong id="imported">—</strong><small>SQLite 累计提交任务</small></article><article class="panel metric orange"><i></i><p>需要关注</p><strong id="attention">—</strong><small id="attentionText">失败、重试及结果待核对</small></article><article class="panel metric blue"><i></i><p>24 小时提交成功率</p><strong id="rate">—</strong><small id="rateText">暂无提交记录</small></article></section>
+  <section class="composer-grid">
+    <article class="panel composer"><div class="section-head"><div><h2>添加磁力链接</h2><p>批量粘贴，或导入包含磁力链接的文本文件。</p></div><span class="step-label">01 / 添加到队列</span></div>
+      <label class="sr-only" for="links">磁力链接</label><textarea id="links" placeholder="magnet:?xt=urn:btih:…&#10;&#10;每行一条，也可以直接粘贴包含链接的文本。" spellcheck="false"></textarea>
+      <div class="composer-actions"><div><button class="button secondary" id="chooseFile">导入文本文件</button><input id="textFile" type="file" accept=".txt,.csv,.md,.log" hidden><span class="muted" id="inputHint">最多 500 条 / 2MB</span></div><button class="button primary" id="submit">加入并自动提交 <span>→</span></button></div>
+      <p id="submitFeedback" role="status" class="feedback"></p>
+    </article>
+    <article class="panel rules"><div class="section-head"><h2>主视频筛选规则</h2><span class="badge">提交前筛选</span></div><div class="rule-size">&gt; <b id="minimumSize">200</b><span> MB</span></div><p>每条磁力只选择最大的主视频文件</p><ul><li id="minimumRule">严格大于 200MB，等于也不下载</li><li id="sampleRule">排除样片、预告、字幕和图片</li><li>其他视频与附件均不提交</li><li>解析不完整时保留记录，等待重试</li></ul><form id="sizeForm" class="size-form"><label for="minimumInput">视频大小下限（MB）</label><div class="size-controls"><input id="minimumInput" type="number" min="0.000001" max="1048576" step="any" required aria-describedby="sizeFeedback"><button id="saveSize" class="button primary" type="submit">保存规则</button></div><p id="sizeFeedback" role="status" class="feedback">保存后用于后续筛选；已提交任务不变。</p></form></article>
+  </section>
+  <section class="panel runtime"><div class="section-head"><div><h2>客户端运行状态</h2><p>本地程序与网页共用一个数据库，记录实时一致。</p></div><button class="button secondary" id="pause">暂停队列</button></div><div class="runtime-grid"><div><span>剪贴板监听</span><label class="toggle"><input id="clipboard" type="checkbox"><span>自动加入磁力链接</span></label><small id="clipboardError"></small></div><div><span>迅雷接口</span><strong id="apiStatus">检查中</strong></div><div><span>下载目录（远端）</span><strong id="downloadPath">读取中</strong></div><div><span>累计重复拦截</span><strong id="duplicateCount">—</strong></div></div></section>
+  <section class="panel records"><div class="section-head"><div><h2>任务与提交记录</h2><p>保留每次处理结果，点击任务查看主视频和被排除的文件。</p></div><a class="button secondary" href="/api/export">导出 CSV</a></div><div class="toolbar"><div class="tabs" role="group" aria-label="任务状态"><button data-status="" class="active">全部</button><button data-status="imported">已提交</button><button data-status="queued">待处理</button><button data-status="skipped">已跳过</button><button data-status="failed">失败</button><button data-status="review">待核对</button></div><input id="search" placeholder="搜索名称或磁力链接" aria-label="搜索任务"></div>
+    <div class="table-scroll"><table><thead><tr><th>任务 / 主视频</th><th>状态</th><th>文件大小</th><th>创建时间</th><th>操作</th></tr></thead><tbody id="taskRows"><tr><td colspan="5" class="empty">正在加载记录…</td></tr></tbody></table></div><div class="pagination"><span id="recordCount">—</span><div><button class="button secondary compact" id="prev">上一页</button><span id="pageNumber">1</span><button class="button secondary compact" id="next">下一页</button></div></div>
+  </section>
+  <section class="bottom-grid"><article class="panel"><div class="section-head"><h2>最近处理动态</h2><span class="muted">最近 20 次</span></div><div id="events" class="events"><p class="empty">暂无记录</p></div></article><article class="panel"><div class="section-head"><h2>过滤统计</h2><span class="muted">新版本累计</span></div><div id="filters" class="filter-grid"></div><div class="storage"><span>本地数据库</span><code id="databasePath">—</code><p id="legacyInfo"></p></div></article></section>
+  <footer><span><b class="live-dot"></b> 本地运行 · 每 3 秒刷新</span><span>迅雷磁力导入 / XunleiAutoImport</span></footer>
+</main>
+<dialog id="detail"><div class="section-head"><h2>任务详情</h2><button id="closeDetail" class="button secondary compact">关闭</button></div><h3 id="detailTitle"></h3><p id="detailStatus"></p><pre id="detailLink"></pre><div class="table-scroll"><table><thead><tr><th>文件</th><th>大小</th><th>处理规则</th></tr></thead><tbody id="detailFiles"></tbody></table></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div>
+</body></html>

@@ -17,6 +17,8 @@ public partial class MainWindow : Window
     private readonly Keyboard keyboard;
     private readonly Tray tray;
     private readonly FanWorker fan = new();
+    private readonly XunleiService xunlei = new();
+    private readonly CapsOverlay caps = new();
     private readonly DispatcherTimer timer;
     private readonly Queue<FanSample> history = new();
     private AppSettings settings;
@@ -42,7 +44,11 @@ public partial class MainWindow : Window
         WindowPositions.SwitcherWindow = handle;
         HwndSource.FromHwnd(handle).AddHook(WindowMessage);
         keyboard = new(handle, settings, () => Dispatcher.BeginInvoke(() => QuickSleep(fromHotkey: true)));
-        tray = new(Reveal, () => _ = Switch(true), () => _ = Switch(false), () => QuickSleep(false), Quit);
+        keyboard.CapsChanged += () => Dispatcher.BeginInvoke(() => { if (!working && !exiting) caps.Display(); });
+        tray = new(Reveal, () => _ = Switch(true), () => _ = Switch(false), () => QuickSleep(false), Quit,
+            () => xunlei.SetListening(true), () => xunlei.SetListening(false), xunlei.OpenWeb);
+        xunlei.Changed += () => Dispatcher.BeginInvoke(RenderXunlei);
+        xunlei.Notification += message => Dispatcher.BeginInvoke(() => { if (!exiting) tray.Notify(message); });
         fan.Sample += sample => Dispatcher.BeginInvoke(() => RenderFan(sample));
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += (_, _) => Tick();
@@ -75,6 +81,7 @@ public partial class MainWindow : Window
         }
         else if (message is 0x7e or 0x218)
         {
+            caps.Dismiss();
             _ = RefreshDisplays();
         }
         return IntPtr.Zero;
@@ -86,6 +93,7 @@ public partial class MainWindow : Window
             return;
         legacySleep = FanWorker.Running("Quick-Sleep");
         fan.Check();
+        xunlei.Check();
         if (sampleAt != DateTime.MinValue && DateTime.UtcNow - sampleAt > TimeSpan.FromSeconds(12))
         {
             sampleAt = DateTime.MinValue;
@@ -105,6 +113,18 @@ public partial class MainWindow : Window
         StartupLabel.Foreground = new SolidColorBrush(success ? Color.FromRgb(20, 105, 63) : Color.FromRgb(153, 37, 41));
         StartupBadge.ToolTip = success ? $"{Environment.ProcessPath} --tray" : error;
     }
+
+    private void RenderXunlei()
+    {
+        if (exiting) return;
+        XunleiLabel.Text = !xunlei.Ready ? "迅雷服务未就绪，请退出旧版并检查日志" :
+            xunlei.Listening ? "迅雷 · 正在监听剪贴板" : "迅雷 · 监听已暂停";
+        XunleiToggle.IsEnabled = XunleiWeb.IsEnabled = xunlei.Ready;
+        XunleiToggle.Content = xunlei.Listening ? "暂停监听" : "开始监听";
+    }
+
+    private void XunleiToggleClick(object sender, RoutedEventArgs args) => xunlei.SetListening(!xunlei.Listening);
+    private void XunleiWebClick(object sender, RoutedEventArgs args) => xunlei.OpenWeb();
 
     private void RenderHotkeys()
     {
@@ -259,6 +279,7 @@ public partial class MainWindow : Window
         if (working || hotkeyEditor is not null && !emergency)
             return;
         Hide();
+        caps.Dismiss();
         StartWork(tv ? "正在切换到电视…" : "正在恢复办公布局和窗口…");
         try
         {
@@ -466,6 +487,8 @@ public partial class MainWindow : Window
             return;
         exiting = true;
         timer.Stop();
+        caps.Close();
+        xunlei.Dispose();
         fan.Dispose();
         keyboard.Dispose();
         tray.Dispose();

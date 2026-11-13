@@ -28,9 +28,17 @@ try {
     & $Python @fanArgs
     if ($LASTEXITCODE -ne 0) { throw '温控助手构建失败。' }
 
+    Push-Location (Join-Path $PSScriptRoot 'XunleiWorker')
+    try {
+        & $Python -m PyInstaller --noconfirm --distpath (Join-Path $workspaceBuild 'xunlei') --workpath (Join-Path $workspaceBuild 'xunlei-build') worker.spec
+        if ($LASTEXITCODE -ne 0) { throw '迅雷后台构建失败。' }
+    }
+    finally { Pop-Location }
+
     $componentStage = Join-Path $workspaceBuild ('components-' + [Guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $componentStage | Out-Null
     Copy-Item -LiteralPath (Join-Path $workspaceBuild 'fan\FanWorker.exe') -Destination $componentStage
+    Copy-Item -LiteralPath (Join-Path $workspaceBuild 'xunlei\XunleiWorker.exe') -Destination $componentStage
     Expand-Archive -LiteralPath $monitorArchive -DestinationPath (Join-Path $componentStage 'MultiMonitorTool')
     $componentArchive = Join-Path $workspaceBuild 'components.zip'
     Compress-Archive -Path (Join-Path $componentStage '*') -DestinationPath $componentArchive -Force

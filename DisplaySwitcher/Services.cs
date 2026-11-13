@@ -94,12 +94,17 @@ internal static class Startup
         if (text.StartsWith('"'))
         {
             end = text.IndexOf('"', 1);
-            return end > 1 && Path.GetFileName(text[1..end]).Equals(Executable, StringComparison.OrdinalIgnoreCase);
+            return end > 1 && IsManagedExecutable(Path.GetFileName(text[1..end]));
         }
         Match executable = Regex.Match(text, @"^.+?\.exe(?=\s|$)", RegexOptions.IgnoreCase);
         return executable.Success &&
-            Path.GetFileName(executable.Value).Equals(Executable, StringComparison.OrdinalIgnoreCase);
+            IsManagedExecutable(Path.GetFileName(executable.Value));
     }
+
+    private static bool IsManagedExecutable(string name) =>
+        name.Equals(Executable, StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("keyboard-lock-osd.exe", StringComparison.OrdinalIgnoreCase) ||
+        name.Equals("XunleiAutoImport.exe", StringComparison.OrdinalIgnoreCase);
 
     internal static void CreateRecoveryShortcut()
     {
@@ -128,6 +133,7 @@ internal sealed class Keyboard : IDisposable
     private bool altDown, solo;
     private int key;
     private uint modifiers;
+    internal event Action? CapsChanged;
     public bool TvRegistered { get; private set; }
     public bool OfficeRegistered { get; }
     public bool RecoveryRegistered { get; }
@@ -176,6 +182,8 @@ internal sealed class Keyboard : IDisposable
             int flags = Marshal.ReadInt32(data, 8);
             bool down = message.ToInt64() is 0x100 or 0x104;
             bool up = message.ToInt64() is 0x101 or 0x105;
+            if (keyCode == 0x14 && up)
+                CapsChanged?.Invoke();
             if ((flags & 0x10) == 0)
             {
                 if (keyCode == RightAlt && down && !altDown)
@@ -385,7 +393,8 @@ internal sealed class Tray : IDisposable
     private readonly Icon fallback;
     private Icon? wave;
 
-    internal Tray(Action show, Action tv, Action office, Action sleep, Action quit)
+    internal Tray(Action show, Action tv, Action office, Action sleep, Action quit,
+        Action startListening, Action pauseListening, Action openXunlei)
     {
         using var stream = System.Windows.Application.GetResourceStream(
             new Uri("pack://application:,,,/Assets/imageres_1405.ico")).Stream;
@@ -396,6 +405,10 @@ internal sealed class Tray : IDisposable
         menu.Items.Add("电视模式", null, (_, _) => tv());
         menu.Items.Add("恢复办公", null, (_, _) => office());
         menu.Items.Add("快速关屏", null, (_, _) => sleep());
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("迅雷：开始监听", null, (_, _) => startListening());
+        menu.Items.Add("迅雷：暂停监听", null, (_, _) => pauseListening());
+        menu.Items.Add("迅雷控制中心", null, (_, _) => openXunlei());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => quit());
         icon = new NotifyIcon { Icon = fallback, Visible = true, Text = "显示器切换", ContextMenuStrip = menu };
@@ -412,6 +425,8 @@ internal sealed class Tray : IDisposable
     }
 
     internal static string Temp(double? value) => value is null ? "--" : $"{value:F1}°C";
+
+    internal void Notify(string message) => icon.ShowBalloonTip(4000, "迅雷主视频已提交", message, ToolTipIcon.Info);
 
     private static Icon DrawWave(FanSample[] history)
     {

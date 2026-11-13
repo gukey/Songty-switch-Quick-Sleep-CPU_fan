@@ -1,4 +1,36 @@
-# 显示器切换 · Quick-Sleep · ESP32 温控
+# 显示器切换与后台工具中心
+
+单 EXE、单托盘，持续运行显示器切换、温控、快速关屏、Caps Lock 大小写提示和迅雷磁力导入。主界面与迅雷网页均由用户手动打开，关闭主界面继续在托盘运行，右键「退出」统一结束内部服务。
+
+## 集成架构图
+
+```mermaid
+flowchart TD
+    EXE[DisplaySwitcher.exe 单文件] --> START[单实例 / 实际路径自启动]
+    EXE --> CACHE[校验并释放内置组件]
+    START --> HOST[WPF 宿主 / 唯一托盘]
+    HOST --> UI[手动打开主界面]
+    HOST --> KEY[键盘钩子和全局热键]
+    KEY --> DISPLAY[F3 电视单屏 / F4 办公扩展]
+    DISPLAY --> CCD[Windows CCD / MultiMonitorTool]
+    DISPLAY --> WINDOWS[应用窗口迁到目标主屏]
+    KEY --> CAPS[Caps Lock 短时浮层]
+    KEY --> SLEEP[右 Alt 暂停媒体并关屏]
+    CACHE --> FAN[FanWorker 温控后台]
+    FAN --> TEMP[CPU/GPU 温度和波形]
+    FAN --> ESP[串口 ESP32]
+    CACHE --> XL[XunleiWorker 迅雷后台]
+    HOST -->|开始/暂停监听、统一退出| XL
+    XL --> CLIP[剪贴板监听]
+    CLIP --> DB[SQLite 队列 / 去重 / 历史]
+    DB --> FILTER[完整清单解析 / 最大合格主视频]
+    FILTER --> REMOTE[用户配置的迅雷接口]
+    XL --> WEB[本机 Web 控制中心]
+    UI -->|手动打开| WEB
+    REMOTE -->|成功提交通知| HOST
+```
+
+每个模块的作用、运行效果、暂停语义、数据位置和迁移方式见 [详细模块说明](docs/模块说明.md)。
 
 适用于 Windows 11 x64 的托盘工具。用 F3 将桌面输出切到索尼电视，用 F4 回到切换前的 Windows 扩展布局，单独按下并松开右 Alt 可暂停媒体并关屏。主窗口和托盘可以查看 CPU/GPU 温度及 ESP32 连接状态。
 

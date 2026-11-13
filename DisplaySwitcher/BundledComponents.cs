@@ -61,6 +61,7 @@ internal static class BundledComponents
                 finally { File.Delete(temporary); }
             }
             if (!File.Exists(Path.Combine(root, "FanWorker.exe")) ||
+                !File.Exists(Path.Combine(root, "XunleiWorker.exe")) ||
                 !File.Exists(Path.Combine(root, "MultiMonitorTool", "MultiMonitorTool.exe")))
                 throw new InvalidDataException("内置运行组件不完整，请重新下载程序。");
             return root;
