@@ -14,7 +14,8 @@ internal sealed class CapsOverlay : Window
         FontWeight = FontWeights.ExtraBold, HorizontalAlignment = HorizontalAlignment.Center,
         VerticalAlignment = VerticalAlignment.Center };
     private readonly TextBlock state = new() { FontSize = 28, FontWeight = FontWeights.ExtraBold,
-        LineHeight = 28, LineStackingStrategy = LineStackingStrategy.BlockLineHeight };
+        LineHeight = 28, LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+        TextAlignment = TextAlignment.Center };
     private readonly Border icon = new() { Width = 58, Height = 58, CornerRadius = new CornerRadius(12),
         BorderThickness = new Thickness(1), BorderBrush = new SolidColorBrush(Color.FromArgb(51, 255, 255, 255)) };
     private readonly DispatcherTimer hide = new() { Interval = TimeSpan.FromMilliseconds(1150) };
@@ -29,19 +30,21 @@ internal sealed class CapsOverlay : Window
         ShowInTaskbar = false;
         ShowActivated = false;
         Topmost = true;
-        Width = 226; Height = 90;
+        Width = 166; Height = 90;
         FontFamily = new FontFamily("Segoe UI");
         icon.Child = iconText;
-        var copy = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0) };
+        var copy = new StackPanel { Width = 56, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(18, 0, 0, 0) };
         copy.Children.Add(new TextBlock { Text = "CAP", FontSize = 12, FontWeight = FontWeights.ExtraBold,
-            Foreground = new SolidColorBrush(Color.FromArgb(184, 248, 250, 252)), Margin = new Thickness(0, 0, 0, 2) });
+            Foreground = new SolidColorBrush(Color.FromArgb(184, 248, 250, 252)), Margin = new Thickness(0, 0, 0, 2),
+            TextAlignment = TextAlignment.Center });
         copy.Children.Add(state);
-        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center };
         row.Children.Add(icon);
         row.Children.Add(copy);
         Content = new Border { Background = new SolidColorBrush(Color.FromArgb(148, 24, 27, 32)),
             BorderBrush = new SolidColorBrush(Color.FromArgb(36, 255, 255, 255)), BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(18), Padding = new Thickness(15, 0, 23, 0), Child = row };
+            CornerRadius = new CornerRadius(18), Padding = new Thickness(16, 0, 16, 0), Child = row };
         SourceInitialized += (_, _) => {
             var handle = new WindowInteropHelper(this).Handle;
             SetWindowLongW(handle, -20, GetWindowLongW(handle, -20) | 0x80 | 0x20 | 0x08000000);
