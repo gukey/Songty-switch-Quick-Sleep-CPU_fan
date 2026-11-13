@@ -59,6 +59,11 @@ public partial class MainWindow : Window
 
     private IntPtr WindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (message == Tray.TaskbarCreated)
+        {
+            tray.Restore(force: true);
+            Data.Log("任务栏重建，已重新注册托盘图标。");
+        }
         if (message == 0x312)
         {
             handled = true;
@@ -81,6 +86,7 @@ public partial class MainWindow : Window
         }
         else if (message is 0x7e or 0x218)
         {
+            tray.Restore(force: true);
             caps.Dismiss();
             _ = RefreshDisplays();
         }
@@ -93,6 +99,7 @@ public partial class MainWindow : Window
             return;
         legacySleep = FanWorker.Running("Quick-Sleep");
         fan.Check();
+        tray.Restore();
         xunlei.Check();
         if (sampleAt != DateTime.MinValue && DateTime.UtcNow - sampleAt > TimeSpan.FromSeconds(12))
         {

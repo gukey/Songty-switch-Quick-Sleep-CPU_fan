@@ -3,10 +3,11 @@ import os
 import sys
 import threading
 import time
+import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-import clr
 import serial
 import serial.tools.list_ports
 
@@ -66,6 +67,7 @@ class HardwareTemperatureReader:
         self.target_hardware: List[object] = []
 
     def _add_reference(self, dll_name: str) -> None:
+        import clr
         dll_path = os.path.join(LIB_DIR, dll_name)
         if os.path.exists(dll_path):
             clr.AddReference(dll_path)
@@ -96,7 +98,9 @@ class HardwareTemperatureReader:
             ]
             self.computer = Computer()
             self.computer.IsCpuEnabled = True
-            self.computer.IsGpuEnabled = True
+            # NVIDIA Update also queries power through NVML and has crashed under load.
+            # Collect only CPU here; GPU temperature is queried in a separate CLI process.
+            self.computer.IsGpuEnabled = False
             # portable=False 让 Ring0 驱动释放到系统临时目录，避免在 EXE 旁生成 .sys。
             self.computer.Open(False)
             self.target_hardware = [
@@ -147,6 +151,22 @@ class HardwareTemperatureReader:
         except Exception as exc:
             log(f"Read temperature error: {exc}")
             return None, None
+        tool = shutil.which("nvidia-smi")
+        if tool:
+            try:
+                result = subprocess.run([tool, '--query-gpu=temperature.gpu', '--format=csv,noheader,nounits'],
+                                        capture_output=True, text=True, timeout=3,
+                                        creationflags=subprocess.CREATE_NO_WINDOW)
+                values = []
+                for line in result.stdout.splitlines():
+                    try:
+                        values.append(float(line.strip()))
+                    except ValueError:
+                        continue
+                valid = [value for value in values if MIN_VALID_TEMP <= value <= MAX_VALID_TEMP]
+                gpu_temp = max(valid) if valid else None
+            except (OSError, subprocess.TimeoutExpired):
+                pass
         return cpu_temp, gpu_temp
 
 

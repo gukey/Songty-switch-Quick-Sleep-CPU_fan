@@ -18,6 +18,7 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs args)
     {
         base.OnStartup(args);
+        System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         bool restore = Array.Exists(args.Args, value => value == "--restore-office");
         try
         {

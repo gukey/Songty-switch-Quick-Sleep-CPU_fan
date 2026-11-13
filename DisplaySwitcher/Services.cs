@@ -275,6 +275,7 @@ internal readonly record struct TemperatureScale(double Floor, double Span)
 
 internal sealed class FanWorker : IDisposable
 {
+    private string? lastSampleError;
     private Process? process;
     private DateTime retryAfter;
     private bool legacyNotified;
@@ -332,7 +333,14 @@ internal sealed class FanWorker : IDisposable
                 try
                 {
                     if (line[0] == '{' && JsonSerializer.Deserialize<FanSample>(line, Json) is { } sample)
+                    {
+                        if (sample.Error != lastSampleError)
+                        {
+                            Data.Log(sample.Error ?? "温度采集已恢复正常。");
+                            lastSampleError = sample.Error;
+                        }
                         Sample?.Invoke(sample);
+                    }
                     else if (!line.Equals("Serial RX: ACK", StringComparison.OrdinalIgnoreCase))
                         Data.Log($"ESP32 {line}");
                 }
@@ -345,6 +353,8 @@ internal sealed class FanWorker : IDisposable
             };
             process = child;
             child.Start();
+            try { child.PriorityClass = ProcessPriorityClass.AboveNormal; }
+            catch (Exception error) { Data.Log("温控串口进程优先级设置失败：" + error.Message); }
             child.BeginOutputReadLine();
             child.BeginErrorReadLine();
         }
@@ -389,6 +399,8 @@ internal sealed class FanWorker : IDisposable
 
 internal sealed class Tray : IDisposable
 {
+    internal static readonly int TaskbarCreated = RegisterWindowMessageW("TaskbarCreated");
+    private DateTime restoredAt = DateTime.UtcNow;
     private readonly NotifyIcon icon;
     private readonly Icon fallback;
     private Icon? wave;
@@ -422,6 +434,14 @@ internal sealed class Tray : IDisposable
         icon.Icon = next ?? fallback;
         wave?.Dispose();
         wave = next;
+    }
+
+    internal void Restore(bool force = false)
+    {
+        if (!force && DateTime.UtcNow - restoredAt < TimeSpan.FromSeconds(60)) return;
+        restoredAt = DateTime.UtcNow;
+        icon.Visible = false;
+        icon.Visible = true;
     }
 
     internal static string Temp(double? value) => value is null ? "--" : $"{value:F1}°C";
@@ -472,4 +492,5 @@ internal sealed class Tray : IDisposable
     }
 
     [DllImport("user32.dll")] private static extern bool DestroyIcon(IntPtr icon);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int RegisterWindowMessageW(string message);
 }
