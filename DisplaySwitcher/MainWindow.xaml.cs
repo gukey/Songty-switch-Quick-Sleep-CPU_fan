@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     private bool legacySleep;
     private readonly string? startupRegistrationError;
     private DateTime sampleAt, sleepAt;
-    private Window? test;
     private HotkeyEditor? hotkeyEditor;
     private bool emergencyPending;
 
@@ -70,12 +69,7 @@ public partial class MainWindow : Window
             switch (wParam.ToInt64())
             {
                 case 1: _ = Switch(true); break;
-                case 2:
-                    if (test is not null)
-                        test.Close();
-                    else
-                        _ = Switch(false);
-                    break;
+                case 2: _ = Switch(false); break;
                 case 3: Emergency(); break;
             }
         }
@@ -252,11 +246,6 @@ public partial class MainWindow : Window
 
     internal void Emergency()
     {
-        if (test is not null)
-        {
-            test.Close();
-            return;
-        }
         if (working)
         {
             emergencyPending = true;
@@ -269,6 +258,7 @@ public partial class MainWindow : Window
     {
         if (working || hotkeyEditor is not null && !emergency)
             return;
+        Hide();
         StartWork(tv ? "正在切换到电视…" : "正在恢复办公布局和窗口…");
         try
         {
@@ -297,11 +287,10 @@ public partial class MainWindow : Window
                     Data.Save("settings.json", changed);
                     settings = changed;
                 }
-                Report(await backend.SwitchToTvAsync(target, () => Dispatcher.InvokeAsync(ConfirmTv).Task));
+                Report(await backend.SwitchToTvAsync(target, () => Task.FromResult(!emergencyPending)));
             }
             else if (!backend.HasOffice && !emergency)
             {
-                Reveal();
                 var saved = await SaveOfficeAndShortcut();
                 Report(saved.Success ? await backend.RestoreOfficeAsync() : saved);
             }
@@ -332,45 +321,6 @@ public partial class MainWindow : Window
         WindowPositions.CenterOnPrimary(new WindowInteropHelper(this).Handle, Width, Height);
     }
 
-    private bool ConfirmTv()
-    {
-        if (emergencyPending)
-        {
-            emergencyPending = false;
-            return false;
-        }
-        int seconds = 18;
-        var label = new TextBlock { Text = $"若没有确认，将在 {seconds} 秒后恢复。",
-            Margin = new Thickness(0, 0, 0, 16) };
-        var accept = new Button { Content = "画面正常，保留", Margin = new Thickness(0, 0, 8, 0) };
-        var cancel = new Button { Content = "立即恢复", IsCancel = true };
-        var actions = new StackPanel { Orientation = Orientation.Horizontal };
-        actions.Children.Add(accept);
-        actions.Children.Add(cancel);
-        var content = new StackPanel { Margin = new Thickness(22) };
-        content.Children.Add(new TextBlock { Text = "电视画面是否正常？", FontSize = 22, FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 10) });
-        content.Children.Add(label);
-        content.Children.Add(actions);
-        var dialog = new Window { Title = "确认电视画面", Content = content,
-            Width = 380, SizeToContent = SizeToContent.Height, ResizeMode = ResizeMode.NoResize,
-            Topmost = true, WindowStartupLocation = WindowStartupLocation.CenterScreen, ShowInTaskbar = false,
-            Background = new SolidColorBrush(Color.FromRgb(241, 247, 255)), FontSize = 14 };
-        var countdown = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        countdown.Tick += (_, _) =>
-        {
-            if (--seconds == 0)
-                dialog.Close();
-            else
-                label.Text = $"若没有确认，将在 {seconds} 秒后恢复。";
-        };
-        accept.Click += (_, _) => dialog.DialogResult = true;
-        test = dialog;
-        countdown.Start();
-        try { return dialog.ShowDialog() == true; }
-        finally { test = null; countdown.Stop(); }
-    }
-
     private void StartWork(string status)
     {
         working = true;
@@ -392,8 +342,6 @@ public partial class MainWindow : Window
     private void Report(SwitchResult result)
     {
         StatusLabel.Text = result.Message;
-        if (!result.Success && !result.Message.StartsWith("测试结束", StringComparison.Ordinal))
-            Reveal();
     }
 
     private void TvClick(object sender, RoutedEventArgs args) => _ = Switch(true);

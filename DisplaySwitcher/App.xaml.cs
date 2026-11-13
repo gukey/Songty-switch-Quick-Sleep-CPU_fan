@@ -28,7 +28,7 @@ public partial class App : Application
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await client.ConnectAsync(2500);
                 using var writer = new StreamWriter(client);
-                await writer.WriteLineAsync(restore ? "office" : "show");
+                await writer.WriteLineAsync(restore ? "office" : "noop");
                 Shutdown();
                 return;
             }
@@ -49,8 +49,6 @@ public partial class App : Application
             main = new MainWindow(settings);
             MainWindow = main;
             _ = Listen();
-            if (Array.Exists(args.Args, value => value == "--show"))
-                main.Reveal();
         }
         catch (Exception error)
         {
@@ -73,9 +71,7 @@ public partial class App : Application
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                 timeout.CancelAfter(TimeSpan.FromSeconds(3));
                 string? command = await reader.ReadLineAsync(timeout.Token).ConfigureAwait(false);
-                if (command == "show")
-                    await Dispatcher.InvokeAsync(() => main?.Reveal());
-                else if (command == "office")
+                if (command == "office")
                     await Dispatcher.InvokeAsync(() => main?.Emergency());
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { return; }
