@@ -78,16 +78,23 @@ internal static class Program
             third.WindowState = WindowState.Maximized;
             Pump();
             Require(Output(handles[2]) == secondary.Output, "maximized window moved to secondary before restore");
+            var lateMove = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(2750) };
+            lateMove.Tick += (_, _) => { lateMove.Stop(); Move(first, secondary, 120); };
+            lateMove.Start();
+            var restoreTime = System.Diagnostics.Stopwatch.StartNew();
             var pendingRestore = Task.Run(() => (int)restore.Invoke(null, [layout, original])!);
             var dispatcher = Dispatcher.CurrentDispatcher;
             var waiting = new DispatcherFrame();
             _ = pendingRestore.ContinueWith(_ => dispatcher.BeginInvoke(() => waiting.Continue = false));
             Dispatcher.PushFrame(waiting);
             int restored = pendingRestore.GetAwaiter().GetResult();
+            lateMove.Stop();
+            Require(restoreTime.Elapsed.TotalSeconds >= 4 && restoreTime.Elapsed.TotalSeconds < 10,
+                $"late window movement extends verification until stable ({restoreTime.Elapsed.TotalSeconds:F2}s)");
             Pump();
             Require(restored == 4 && Output(handles[0]) == primary.Output && Output(handles[1]) == secondary.Output &&
                 Output(handles[2]) == primary.Output && third.WindowState == WindowState.Maximized,
-                $"normal and maximized windows return to original screens (accepted={restored}, maximized={Output(handles[2])})");
+                $"normal and maximized windows return to original screens (accepted={restored}, primary={primary.Output}, first={Output(handles[0])}, secondary={Output(handles[1])}/{secondary.Output}, maximized={Output(handles[2])}, state={third.WindowState})");
             fourth.WindowState = WindowState.Normal;
             Pump();
             Require(Output(handles[3]) == primary.Output,
@@ -110,11 +117,14 @@ internal static class Program
             Array.Copy(selected, allToPrimary, selected.Length);
             Require(selected.Length == 4 && selected.All(entry => (bool)entry.GetType().GetProperty("PreferPrimary")!.GetValue(entry)!),
                 "F4 without a saved snapshot gathers every window onto primary");
+            var gatherTime = System.Diagnostics.Stopwatch.StartNew();
             var gatherTask = Task.Run(() => (int)restore.Invoke(null, [layout, allToPrimary])!);
             var gatherFrame = new DispatcherFrame();
             _ = gatherTask.ContinueWith(_ => dispatcher.BeginInvoke(() => gatherFrame.Continue = false));
             Dispatcher.PushFrame(gatherFrame);
             Require(gatherTask.GetAwaiter().GetResult() == 4, "all four window placements verified on primary");
+            Require(gatherTime.Elapsed.TotalSeconds < 8,
+                $"stable windows finish verification early ({gatherTime.Elapsed.TotalSeconds:F2}s)");
             fourth.WindowState = WindowState.Normal;
             Pump();
             Require(handles.All(handle => Output(handle) == primary.Output),

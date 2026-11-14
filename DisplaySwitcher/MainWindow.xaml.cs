@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -28,6 +29,7 @@ public partial class MainWindow : Window
     private DateTime sampleAt, sleepAt;
     private HotkeyEditor? hotkeyEditor;
     private bool emergencyPending;
+    private bool? activeSwitchTv, pendingSwitchTv;
 
     public MainWindow(AppSettings settings)
     {
@@ -283,8 +285,19 @@ public partial class MainWindow : Window
 
     private async Task Switch(bool tv, bool emergency = false)
     {
-        if (working || hotkeyEditor is not null && !emergency)
+        if (exiting || hotkeyEditor is not null && !emergency)
             return;
+        if (working)
+        {
+            // Keep the latest requested mode; repeated keys do not build a queue.
+            pendingSwitchTv = activeSwitchTv == tv ? null : tv;
+            Data.Log(pendingSwitchTv is null ? "切屏请求与当前操作相同，已合并。" :
+                $"切屏期间收到 {(tv ? "F3" : "F4")}，完成当前操作后执行。");
+            return;
+        }
+        activeSwitchTv = tv;
+        var elapsed = Stopwatch.StartNew();
+        Data.Log($"开始 {(tv ? "F3 电视模式" : "F4 办公模式")}。");
         Hide();
         caps.Dismiss();
         StartWork(tv ? "正在切换到电视…" : "正在恢复办公布局和窗口…");
@@ -334,6 +347,8 @@ public partial class MainWindow : Window
         }
         finally
         {
+            Data.Log($"{(tv ? "F3" : "F4")} 操作结束，耗时 {elapsed.Elapsed.TotalSeconds:F2} 秒。");
+            activeSwitchTv = null;
             if (IsVisible && WindowState != WindowState.Minimized)
                 PlaceOnPrimary();
             EndWork();
@@ -363,7 +378,13 @@ public partial class MainWindow : Window
         if (emergencyPending)
         {
             emergencyPending = false;
+            pendingSwitchTv = null;
             _ = Switch(false, emergency: true);
+        }
+        else if (pendingSwitchTv is bool next)
+        {
+            pendingSwitchTv = null;
+            _ = Switch(next);
         }
     }
 

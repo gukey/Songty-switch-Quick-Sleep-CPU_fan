@@ -222,7 +222,8 @@ internal static class WindowPositions
             return (0, expected.Count);
 
         // Windows and some apps continue applying DPI/display changes after the paths are active.
-        // Check for a short, fixed interval so normal window dragging works again once F4 completes.
+        // Finish after three seconds if all windows are stable; retain the longer
+        // retry window for apps that recreate windows or react slowly to DPI changes.
         var retried = new HashSet<long>();
         int lastCorrection = -1;
         for (int attempt = 0; attempt < 64; attempt++)
@@ -248,7 +249,7 @@ internal static class WindowPositions
                     Data.Log($"显示切换后补移窗口：{window.Original.ClassName} PID {window.Original.ProcessId} → {window.Target.Name}");
                 MoveToOriginalScreen(window);
             }
-            if (attempt >= 47 && attempt - lastCorrection >= 5)
+            if (attempt >= 11 && attempt - lastCorrection >= 5 && pending.Values.All(OnTarget))
                 break;
         }
         if (retried.Count > 0)
@@ -263,6 +264,9 @@ internal static class WindowPositions
     {
         if (!IsIconic(window.Window))
         {
+            if (window.Show == ShowMinimized || window.Show == ShowMaximized &&
+                (!TryPlacement(window.Window, out var current) || current.Show != ShowMaximized))
+                return false;
             if (!IsWindowVisible(window.Window) || MonitorFromWindow(window.Window, 0) != window.Screen ||
                 !GetWindowRect(window.Window, out var bounds))
                 return false;
@@ -342,7 +346,7 @@ internal static class WindowPositions
             SetWindowPlacement(window.Window, ref current);
             return;
         }
-        if (current.Show == ShowNormal && GetWindowRect(window.Window, out var actual) &&
+        if (!maximize && current.Show == ShowNormal && GetWindowRect(window.Window, out var actual) &&
             actual.Left == x && actual.Top == y && actual.Right - x == width && actual.Bottom - y == height)
             return;
         if (current.Show is ShowMaximized or ShowMinimized)
