@@ -257,7 +257,8 @@ internal static class SleepControl
     [DllImport("user32.dll", SetLastError = true)] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr first, IntPtr second);
 }
 
-internal sealed record FanSample(double? Cpu, double? Gpu, string? Port, bool Connected, string? Error = null);
+internal sealed record FanSample(double? Cpu, double? Gpu, string? Port, bool Connected, string? Error = null,
+    double? SampleAge = null, double? AckAge = null, double? HeartbeatAge = null);
 
 internal readonly record struct TemperatureScale(double Floor, double Span)
 {
@@ -276,6 +277,7 @@ internal readonly record struct TemperatureScale(double Floor, double Span)
 internal sealed class FanWorker : IDisposable
 {
     private string? lastSampleError;
+    private DateTime lastLinkLog;
     private Process? process;
     private DateTime retryAfter;
     private bool legacyNotified;
@@ -340,6 +342,11 @@ internal sealed class FanWorker : IDisposable
                             lastSampleError = sample.Error;
                         }
                         Sample?.Invoke(sample);
+                        if (DateTime.UtcNow - lastLinkLog >= TimeSpan.FromSeconds(30))
+                        {
+                            lastLinkLog = DateTime.UtcNow;
+                            Data.Log($"温控链路 {sample.Port} CPU={sample.Cpu} GPU={sample.Gpu} 连接={sample.Connected} 样本延迟={sample.SampleAge}s ACK延迟={sample.AckAge}s 心跳延迟={sample.HeartbeatAge}s");
+                        }
                     }
                     else if (!line.Equals("Serial RX: ACK", StringComparison.OrdinalIgnoreCase))
                         Data.Log($"ESP32 {line}");

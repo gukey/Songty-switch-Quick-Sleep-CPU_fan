@@ -32,7 +32,7 @@ class SensorProcess:
                 self.updated = 0
             threading.Thread(target=self._restart, daemon=True).start()
         with self.lock:
-            if now - self.updated > 12:
+            if now - self.updated > 6:
                 return None, None
             return self.sample
 

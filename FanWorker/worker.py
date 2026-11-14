@@ -9,9 +9,11 @@ from fan_controller import FanControllerApp
 from sensor_process import SensorProcess
 
 
-def emit(cpu, gpu, port, connected, error=None):
+def emit(cpu, gpu, port, connected, error=None, sample_age=None, ack_age=None, heartbeat_age=None):
     print(json.dumps({
         "cpu": cpu, "gpu": gpu, "port": port, "connected": connected, "error": error,
+        "sampleAge": sample_age, "ackAge": ack_age,
+        "heartbeatAge": heartbeat_age,
     }, allow_nan=False), flush=True)
 
 
@@ -23,6 +25,7 @@ def stop_when_parent_closes(app):
 
 def run(probe, sensor_stream=False):
     app = FanControllerApp()
+    app.update_interval = 1.0
     if probe or sensor_stream:
         if not app.reader.open():
             emit(None, None, None, False, "温度传感器初始化失败")
@@ -57,12 +60,19 @@ def run(probe, sensor_stream=False):
                 print(f'Sensor process restart failed: {error}', flush=True)
                 cpu, gpu = None, None
             app.ensure_serial_connected()
-            app.serial_bridge.send_temperatures(cpu if cpu is not None else 120,
-                                                gpu if gpu is not None else 120)
+            app.serial_bridge.send_temperatures(cpu, gpu)
+            app.serial_bridge.send_heartbeat()
+            app.serial_bridge.poll_incoming()
             ack = app.serial_bridge.last_ack_monotonic
-            connected = app.serial_bridge.connected and ack > 0 and time.monotonic() - ack < app.ack_timeout_seconds
-            error = '温度采集失效，缺失通道已发送120°C满速保护值（非实测温度）' if cpu is None or gpu is None else None
-            emit(cpu, gpu, app.serial_bridge.port, connected, error)
+            pong = app.serial_bridge.last_pong_monotonic
+            response = max(ack, pong)
+            connected = app.serial_bridge.connected and response > 0 and time.monotonic() - response < app.ack_timeout_seconds
+            error = '温度采集延迟或通道缺失，仅发送有效实测温度' if cpu is None or gpu is None else None
+            now = time.monotonic()
+            sample_age = round(max(0, now - sensors.updated), 3) if sensors.updated else None
+            ack_age = round(max(0, now - ack), 3) if ack else None
+            heartbeat_age = round(max(0, now - pong), 3) if pong else None
+            emit(cpu, gpu, app.serial_bridge.port, connected, error, sample_age, ack_age, heartbeat_age)
             app.stop_event.wait(app.update_interval)
     finally:
         app.serial_bridge.disconnect()

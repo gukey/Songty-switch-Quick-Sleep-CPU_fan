@@ -5,6 +5,7 @@ import threading
 import time
 import shutil
 import subprocess
+import secrets
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -185,6 +186,9 @@ class SerialBridge:
         self.last_ack_monotonic = 0.0
         self.pending_since_monotonic = 0.0
         self.failed_ports_until = {}
+        self.last_pong_monotonic = 0.0
+        self.heartbeat_sent = 0.0
+        self.heartbeat_token = None
 
     @property
     def connected(self) -> bool:
@@ -202,6 +206,9 @@ class SerialBridge:
         self.last_rx_monotonic = 0.0
         self.last_ack_monotonic = 0.0
         self.pending_since_monotonic = 0.0
+        self.last_pong_monotonic = 0.0
+        self.heartbeat_sent = 0.0
+        self.heartbeat_token = None
 
     def is_auto_mode(self) -> bool:
         return self.preferred_port in {"", "AUTO"}
@@ -214,6 +221,11 @@ class SerialBridge:
 
     def candidate_ports(self) -> List[PortInfo]:
         ports = get_serial_ports()
+        if not self.is_auto_mode():
+            # Explicitly selected output port must not fall through to debug/input ports.
+            now = time.monotonic()
+            return [port for port in ports if port.device == self.preferred_port
+                    and self.failed_ports_until.get(port.device, 0.0) <= now]
         targeted = [port for port in ports if self.port_matches_target(port)]
         preferred = [port for port in ports if port.device == self.preferred_port]
         matched = [
@@ -236,7 +248,7 @@ class SerialBridge:
     def mark_port_temporarily_failed(self, port: str) -> None:
         normalized_port = normalize_port_name(port)
         if normalized_port and normalized_port != "AUTO":
-            cooldown = max(30.0, self.ack_timeout_seconds * 3.0)
+            cooldown = 3.0 if normalized_port == self.preferred_port else max(30.0, self.ack_timeout_seconds * 3.0)
             self.failed_ports_until[normalized_port] = time.monotonic() + cooldown
             log(f"Port {normalized_port} paused for {cooldown:.0f}s.")
 
@@ -279,6 +291,9 @@ class SerialBridge:
                 line = self.conn.readline().decode("utf-8", errors="ignore").strip()
                 if line:
                     self.last_rx_monotonic = time.monotonic()
+                    if self.heartbeat_token is not None and line == 'PONG:' + self.heartbeat_token:
+                        self.last_pong_monotonic = self.last_rx_monotonic
+                        self.heartbeat_token = None
                     if line.upper() == "ACK":
                         self.last_ack_monotonic = self.last_rx_monotonic
                         self.pending_since_monotonic = 0.0
@@ -293,12 +308,38 @@ class SerialBridge:
             return False
         self.poll_incoming()
         now = time.monotonic()
+        # 独立心跳用于识别通道故障；旧固件仍可通过温度 ACK 保持兼容。
+        if (self.heartbeat_token is not None and now - self.heartbeat_sent >= self.ack_timeout_seconds
+                and self.last_ack_monotonic < self.heartbeat_sent):
+            log('Serial heartbeat timeout: forcing reconnect.')
+            self.disconnect()
+            return False
         if self.pending_since_monotonic and now - self.pending_since_monotonic >= self.ack_timeout_seconds:
             log("Serial link stale: forcing reconnect.")
             self.mark_port_temporarily_failed(self.port)
             self.disconnect()
             return False
         return self.connected
+
+    def send_heartbeat(self) -> bool:
+        if not self.connected:
+            return False
+        now = time.monotonic()
+        if self.heartbeat_token is not None:
+            if now - self.heartbeat_sent < self.ack_timeout_seconds:
+                return True
+            self.heartbeat_token = None
+        if now - self.heartbeat_sent < 2:
+            return True
+        token = str(secrets.randbits(32))
+        try:
+            self.conn.write(('PING:' + token + '\n').encode('ascii'))
+            self.heartbeat_token = token
+            self.heartbeat_sent = time.monotonic()
+            return True
+        except (OSError, serial.SerialException):
+            self.disconnect()
+            return False
 
     def send_temperatures(self, cpu: Optional[float], gpu: Optional[float]) -> bool:
         if not self.connected:
