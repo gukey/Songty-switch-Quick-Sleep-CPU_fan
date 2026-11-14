@@ -71,6 +71,43 @@ class ResilienceTests(unittest.TestCase):
         self.assertGreater(bridge.last_pong_monotonic, 0)
         self.assertEqual(bridge.last_ack_monotonic, 0)
 
+    def test_paired_esp32_follows_renumbered_outgoing_port(self):
+        bridge = SerialBridge('AUTO', 115200, 10, [], 'ac1518d5cf62', '')
+        spp = r'BTHENUM\{00001101-0000-1000-8000-00805F9B34FB}' + chr(92)
+        ports = [PortInfo('COM5', 'Bluetooth', spp + '000000000000_00000006', ''),
+                 PortInfo('COM4', 'Bluetooth', spp + 'AC1518D5CF62_C00000000', ''),
+                 PortInfo('COM6', 'USB', r'USB\VID_10C4', ''),
+                 PortInfo('COM7', 'Other Bluetooth', spp + '111111111111_C00000000', '')]
+        with patch('fan_controller.get_serial_ports', return_value=ports):
+            self.assertEqual([p.device for p in bridge.candidate_ports()], ['COM4'])
+            ports[1].device = 'COM9'
+            self.assertEqual([p.device for p in bridge.candidate_ports()], ['COM9'])
+
+    def test_auto_port_requires_matching_heartbeat_before_temperature(self):
+        bridge = SerialBridge('AUTO', 115200, 10, [], 'ac1518d5cf62', '')
+        port = PortInfo('COM4', '', '', '')
+        connection = Mock(is_open=True, in_waiting=1)
+        def read():
+            connection.in_waiting = 0
+            return b'PONG:123\n'
+        connection.readline.side_effect = read
+        with patch.object(bridge, 'candidate_ports', return_value=[port]), \
+             patch('fan_controller.serial.Serial', return_value=connection), \
+             patch('fan_controller.secrets.randbits', return_value=123):
+            self.assertTrue(bridge.connect())
+        self.assertEqual(connection.write.call_args.args[0], b'PING:123\n')
+        self.assertEqual(bridge.last_ack_monotonic, 0)
+        bridge.disconnect()
+
+    def test_auto_port_rejects_wrong_heartbeat_and_closes_handle(self):
+        bridge = SerialBridge('AUTO', 115200, 10, [], 'ac1518d5cf62', '')
+        connection = Mock(is_open=True, in_waiting=0)
+        with patch.object(bridge, 'candidate_ports', return_value=[PortInfo('COM4', '', '', '')]), \
+             patch('fan_controller.serial.Serial', return_value=connection):
+            self.assertFalse(bridge.connect())
+        connection.close.assert_called_once()
+        self.assertFalse(bridge.connected)
+
     def test_hung_collector_is_replaced(self):
         sensor = SensorProcess([sys.executable, '-u', '-c',
                                 'import time; print(\'{"cpu":91,"gpu":85}\', flush=True); time.sleep(20)'], timeout=0.6)

@@ -226,6 +226,16 @@ class SerialBridge:
             now = time.monotonic()
             return [port for port in ports if port.device == self.preferred_port
                     and self.failed_ports_until.get(port.device, 0.0) <= now]
+        # 配对设备的固定蓝牙地址在出站 SPP 设备路径中；入站口没有此地址。
+        # 不扫描 USB、SOL 或其他已配对的蓝牙设备。
+        if self.target_hwid_contains:
+            now = time.monotonic()
+            return sorted([port for port in ports
+                           if 'bthenum\\' in port.hwid.lower()
+                           and '{00001101-0000-1000-8000-00805f9b34fb}' in port.hwid.lower()
+                           and self.target_hwid_contains.lower() + '_' in port.hwid.lower()
+                           and self.failed_ports_until.get(port.device, 0.0) <= now],
+                          key=lambda port: port.device != self.port)
         targeted = [port for port in ports if self.port_matches_target(port)]
         preferred = [port for port in ports if port.device == self.preferred_port]
         matched = [
@@ -248,7 +258,7 @@ class SerialBridge:
     def mark_port_temporarily_failed(self, port: str) -> None:
         normalized_port = normalize_port_name(port)
         if normalized_port and normalized_port != "AUTO":
-            cooldown = 3.0 if normalized_port == self.preferred_port else max(30.0, self.ack_timeout_seconds * 3.0)
+            cooldown = 3.0 if self.is_auto_mode() or normalized_port == self.preferred_port else max(30.0, self.ack_timeout_seconds * 3.0)
             self.failed_ports_until[normalized_port] = time.monotonic() + cooldown
             log(f"Port {normalized_port} paused for {cooldown:.0f}s.")
 
@@ -275,10 +285,20 @@ class SerialBridge:
                 self.port = candidate.device
                 self.last_rx_monotonic = time.monotonic()
                 self.pending_since_monotonic = 0.0
+                if self.is_auto_mode():
+                    # 仅在匹配设备回复本次随机数后，允许向此口发送温度。
+                    if not self.send_heartbeat():
+                        raise OSError('ESP32 heartbeat write failed')
+                    deadline = time.monotonic() + 1.5
+                    while time.monotonic() < deadline and self.heartbeat_token is not None:
+                        self.poll_incoming()
+                        time.sleep(0.02)
+                    if not self.connected or not self.last_pong_monotonic:
+                        raise OSError('ESP32 heartbeat verification timed out')
                 log(f"Serial connected: {candidate.device}")
                 return True
             except Exception as exc:
-                self.conn = None
+                self.disconnect()
                 self.mark_port_temporarily_failed(candidate.device)
                 log(f"Serial connect failed on {candidate.device}: {exc}")
         return False
@@ -374,7 +394,7 @@ class FanControllerApp:
         self.ack_timeout_seconds = 10.0
         self.reader = HardwareTemperatureReader()
         self.serial_bridge = SerialBridge(
-            "COM5", 115200, self.ack_timeout_seconds, ["bluetooth", "蓝牙", "bthenum"], "", ""
+            "AUTO", 115200, self.ack_timeout_seconds, ["bluetooth", "蓝牙", "bthenum"], "ac1518d5cf62", ""
         )
         self.stop_event = threading.Event()
         self.last_loop_monotonic = time.monotonic()
