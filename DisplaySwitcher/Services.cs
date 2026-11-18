@@ -428,6 +428,7 @@ internal sealed class Tray : IDisposable
         menu.Items.Add("迅雷：开始监听", null, (_, _) => startListening());
         menu.Items.Add("迅雷：暂停监听", null, (_, _) => pauseListening());
         menu.Items.Add("迅雷控制中心", null, (_, _) => openXunlei());
+        menu.Items.Add("AxonKey 配置", null, (_, _) => Axonkey.OpenSettings());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => quit());
         icon = new NotifyIcon { Icon = fallback, Visible = true, Text = "显示器切换", ContextMenuStrip = menu };
