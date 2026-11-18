@@ -55,7 +55,6 @@ public partial class MainWindow : Window
         timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
         timer.Tick += (_, _) => Tick();
         timer.Start();
-        _ = Task.Run(Axonkey.EnsureBackground);
         StatusLabel.Text = backend.HasOffice ? "就绪。" : "首次切换会记录当前扩展布局。";
         Tick();
     }
