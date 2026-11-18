@@ -87,7 +87,7 @@ fn ensure_embedded_drivers(app: &tauri::AppHandle) -> Result<(), String> {
     struct Config { instances: Vec<Instance> }
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
-    struct Instance { enabled: bool, kind: String, quarbor_target: Option<String>, binding: Option<String> }
+    struct Instance { enabled: bool, kind: String, quarbor_target: Option<String>, binding: Option<String>, voice_target: Option<String> }
 
     let config_path = app.path().app_data_dir().map_err(|e| e.to_string())?.join("device-instances.json");
     let content = match std::fs::read(config_path) {
@@ -100,12 +100,18 @@ fn ensure_embedded_drivers(app: &tauri::AppHandle) -> Result<(), String> {
     let logs = app.path().app_log_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&logs).map_err(|e| e.to_string())?;
     let targets = config.instances.iter().filter(|instance| instance.enabled && instance.binding.is_some());
-    if targets.clone().any(|instance| instance.quarbor_target.is_some()) {
+    if targets.clone().any(|instance| instance.quarbor_target.is_some() || instance.voice_target.is_some()) {
         let installer = quarbor_installer::find(&resources)?;
         let detected = quarbor_installer::invoke(&installer, "list", None, None)?;
-        for device in detected.devices.iter().filter(|device| device.present && !device.bound && !device.recovery_active) {
-            if targets.clone().any(|instance| instance.quarbor_target.as_ref().is_some_and(|id|
-                id.eq_ignore_ascii_case(&device.instance_id)) && device.matches_kind(&instance.kind)) {
+        for instance in targets {
+            let exact = detected.devices.iter().find(|device| device.present && device.matches_kind(&instance.kind)
+                && instance.quarbor_target.as_ref().is_some_and(|id| id.eq_ignore_ascii_case(&device.instance_id)));
+            let by_address = || {
+                let address = instance.voice_target.as_deref()?;
+                let (id, _) = quarbor_installer::target_for_bluetooth_address(&detected.devices, address, &instance.kind)?;
+                detected.devices.iter().find(|device| device.present && device.instance_id.eq_ignore_ascii_case(&id))
+            };
+            if let Some(device) = exact.or_else(by_address).filter(|device| !device.bound && !device.recovery_active) {
                 let log_path = logs.join("display-switcher-quarbor-install.log");
                 std::fs::OpenOptions::new().create(true).append(true).open(&log_path)
                     .map_err(|error| error.to_string())?;

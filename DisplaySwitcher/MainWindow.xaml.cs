@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly MultiMonitorToolBackend backend;
     private readonly Keyboard keyboard;
     private readonly Tray tray;
+    private readonly SodaMusic sodaMusic = new();
     private readonly AxonkeyModule? axonkey;
     private readonly FanWorker fan = new();
     private readonly XunleiService xunlei = new();
@@ -106,6 +107,7 @@ public partial class MainWindow : Window
         fan.Check();
         tray.Restore();
         xunlei.Check();
+        sodaMusic.Check();
         if (sampleAt != DateTime.MinValue && DateTime.UtcNow - sampleAt > TimeSpan.FromSeconds(12))
         {
             sampleAt = DateTime.MinValue;

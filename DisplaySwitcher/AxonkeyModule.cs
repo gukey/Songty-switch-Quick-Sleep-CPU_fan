@@ -53,9 +53,11 @@ internal sealed class AxonkeyModule : IDisposable
             finally { foreach (var process in standalone) process.Dispose(); }
             Environment.SetEnvironmentVariable("DISPLAY_SWITCHER_AXONKEY_RESOURCES", Path.GetDirectoryName(path));
             handle = NativeLibrary.Load(path);
+            string config = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.axonkey.app");
+            SeedConfiguration(Path.GetDirectoryName(path)!, config);
             if (Environment.ProcessPath is string host)
             {
-                string cli = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.axonkey.app", "cli");
+                string cli = Path.Combine(config, "cli");
                 Directory.CreateDirectory(cli);
                 File.WriteAllText(Path.Combine(cli, "display-switcher-host.txt"), host);
             }
@@ -67,6 +69,23 @@ internal sealed class AxonkeyModule : IDisposable
             Data.Log($"无法加载 AxonKey 内置模块：{error.Message}");
             return null;
         }
+    }
+
+    internal static void SeedConfiguration(string module, string config)
+    {
+        string seed = Path.Combine(module, "Defaults", "device-instances.json");
+        string destination = Path.Combine(config, "device-instances.json");
+        if (!File.Exists(seed) || File.Exists(destination)) return;
+        Directory.CreateDirectory(config);
+        string temporary = Path.Combine(config, $".{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.Copy(seed, temporary);
+            try { File.Move(temporary, destination); }
+            catch (IOException) when (File.Exists(destination)) { return; }
+            Data.Log("已写入内置 AxonKey 默认按键映射。");
+        }
+        finally { File.Delete(temporary); }
     }
 
     internal async Task ShowAsync()

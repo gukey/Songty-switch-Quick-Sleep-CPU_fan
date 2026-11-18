@@ -6,7 +6,8 @@ param(
     [string]$Python = 'py',
     [string]$Components = (Join-Path $PSScriptRoot 'build\components.zip'),
     [string]$Output = (Join-Path $PSScriptRoot 'build\axonkey-embedded-release'),
-    [switch]$PackageOnly
+    [switch]$PackageOnly,
+    [string]$AxonKeyDefaults = (Join-Path $env:APPDATA 'com.axonkey.app\device-instances.json')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,6 +37,20 @@ Expand-Archive -LiteralPath $Components -DestinationPath $stage
 $module = Join-Path $stage 'AxonKey'
 $vendor = Join-Path $module 'vendor'
 New-Item -ItemType Directory -Path $vendor -Force | Out-Null
+if ($AxonKeyDefaults) {
+    $defaults = Get-Item -LiteralPath $AxonKeyDefaults
+    $config = Get-Content -LiteralPath $defaults.FullName -Raw | ConvertFrom-Json
+    if (!$config.instances -or !$config.instances.Count) { throw 'AxonKey 默认配置没有设备。' }
+    foreach ($instance in $config.instances) {
+        if (!$instance.voiceTarget -and $instance.quarborTarget -match '(?i)_([0-9a-f]{12})(?:\\|$)') {
+            # The original schema also uses this address to identify the input driver after re-pairing.
+            $instance | Add-Member -NotePropertyName voiceTarget -NotePropertyValue $Matches[1] -Force
+        }
+    }
+    $defaultsFolder = Join-Path $module 'Defaults'
+    New-Item -ItemType Directory -Path $defaultsFolder | Out-Null
+    $config | ConvertTo-Json -Depth 100 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $defaultsFolder 'device-instances.json')
+}
 Copy-Item -LiteralPath (Join-Path $Source 'src-tauri\target\x86_64-pc-windows-msvc\release\axonkey_lib.dll') -Destination $module
 Copy-Item -LiteralPath (Join-Path $Source 'src-tauri\target\x86_64-pc-windows-msvc\release\axonkey-cli.exe') -Destination $module
 Copy-Item -LiteralPath (Join-Path $Source 'THIRD_PARTY_NOTICES.md') -Destination $module
