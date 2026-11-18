@@ -413,7 +413,7 @@ internal sealed class Tray : IDisposable
     private Icon? wave;
 
     internal Tray(Action show, Action tv, Action office, Action sleep, Action quit,
-        Action startListening, Action pauseListening, Action openXunlei)
+        Action startListening, Action pauseListening, Action openXunlei, Action? openAxonkey = null)
     {
         using var stream = System.Windows.Application.GetResourceStream(
             new Uri("pack://application:,,,/Assets/imageres_1405.ico")).Stream;
@@ -428,6 +428,8 @@ internal sealed class Tray : IDisposable
         menu.Items.Add("迅雷：开始监听", null, (_, _) => startListening());
         menu.Items.Add("迅雷：暂停监听", null, (_, _) => pauseListening());
         menu.Items.Add("迅雷控制中心", null, (_, _) => openXunlei());
+        if (openAxonkey is not null)
+            menu.Items.Add("AxonKey 配置", null, (_, _) => openAxonkey());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("退出", null, (_, _) => quit());
         icon = new NotifyIcon { Icon = fallback, Visible = true, Text = "显示器切换", ContextMenuStrip = menu };

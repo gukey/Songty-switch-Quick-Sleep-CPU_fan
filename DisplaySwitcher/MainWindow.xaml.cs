@@ -17,6 +17,7 @@ public partial class MainWindow : Window
     private readonly MultiMonitorToolBackend backend;
     private readonly Keyboard keyboard;
     private readonly Tray tray;
+    private readonly AxonkeyModule? axonkey;
     private readonly FanWorker fan = new();
     private readonly XunleiService xunlei = new();
     private readonly CapsOverlay caps = new();
@@ -47,8 +48,10 @@ public partial class MainWindow : Window
         HwndSource.FromHwnd(handle).AddHook(WindowMessage);
         keyboard = new(handle, settings, () => Dispatcher.BeginInvoke(() => QuickSleep(fromHotkey: true)));
         keyboard.CapsChanged += () => Dispatcher.BeginInvoke(() => { if (!working && !exiting) caps.Display(); });
+        axonkey = AxonkeyModule.Start();
         tray = new(Reveal, () => _ = Switch(true), () => _ = Switch(false), () => QuickSleep(false), Quit,
-            () => xunlei.SetListening(true), () => xunlei.SetListening(false), xunlei.OpenWeb);
+            () => xunlei.SetListening(true), () => xunlei.SetListening(false), xunlei.OpenWeb,
+            axonkey is null ? null : OpenAxonkeySettings);
         xunlei.Changed += () => Dispatcher.BeginInvoke(RenderXunlei);
         xunlei.Notification += message => Dispatcher.BeginInvoke(() => { if (!exiting) tray.Notify(message); });
         fan.Sample += sample => Dispatcher.BeginInvoke(() => RenderFan(sample));
@@ -134,6 +137,16 @@ public partial class MainWindow : Window
 
     private void XunleiToggleClick(object sender, RoutedEventArgs args) => xunlei.SetListening(!xunlei.Listening);
     private void XunleiWebClick(object sender, RoutedEventArgs args) => xunlei.OpenWeb();
+
+    internal async void OpenAxonkeySettings()
+    {
+        if (axonkey is null)
+        {
+            MessageBox.Show("AxonKey 内置模块未启动，请查看日志。", "AxonKey 配置");
+            return;
+        }
+        await axonkey.ShowAsync();
+    }
 
     private void RenderHotkeys()
     {
@@ -515,6 +528,7 @@ public partial class MainWindow : Window
             return;
         exiting = true;
         timer.Stop();
+        axonkey?.Dispose();
         caps.Close();
         xunlei.Dispose();
         fan.Dispose();
