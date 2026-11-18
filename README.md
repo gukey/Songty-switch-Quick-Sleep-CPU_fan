@@ -63,7 +63,7 @@ flowchart TD
 
 ## 快捷键和托盘
 
-整合版托盘提供 **AxonKey 配置**。它将 `gukey/axonkey` 的 Windows 运行模块、配置页面、命令行工具和 Quarbor 安装资源内置在单文件里，共用 DisplaySwitcher 的启动、托盘和退出流程。设备配置仍存放于 `%APPDATA%\com.axonkey.app`，编辑后会保留。内置版本随 DisplaySwitcher 更新。构建整合版时，先用 `build.ps1` 生成基础组件归档，再在具备 Rust、Node.js 和 Windows C++ 构建工具的环境中执行 `build-axonkey.ps1`，`-Source` 指向脚本指定提交的 `gukey/axonkey` 源码检出目录。
+整合版托盘提供 **AxonKey 配置**。它将 `gukey/axonkey` 的 Windows 按键和鼠标映射、配置页面、命令行工具及 Quarbor 输入驱动安装资源内置在单文件里，共用 DisplaySwitcher 的启动、托盘和退出流程。语音转发、录音悬浮窗和虚拟麦克风安装器均已移除。设备配置仍存放于 `%APPDATA%\com.axonkey.app`，编辑后会保留。构建整合版时，先用 `build.ps1` 生成基础组件归档，再在具备 Rust、Node.js 和 Windows C++ 构建工具的环境中执行 `build-axonkey.ps1`，`-Source` 指向脚本指定提交的 `gukey/axonkey` 源码检出目录。
 
 F3 与 F4 都会迁移全部可控制的应用窗口。最小化窗口保持最小化，但再次打开时落在目标屏幕。点击托盘图标会把本工具显示在当前主屏。普通应用无法移动的窗口会记录错误并显示未全部归位，不会只凭主屏切换成功就报告全部完成。
 

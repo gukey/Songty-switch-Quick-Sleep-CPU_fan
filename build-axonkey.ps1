@@ -42,7 +42,7 @@ Copy-Item -LiteralPath (Join-Path $Source 'THIRD_PARTY_NOTICES.md') -Destination
 $scripts = Join-Path $module 'scripts'
 New-Item -ItemType Directory -Path $scripts | Out-Null
 Copy-Item -LiteralPath (Join-Path $Source 'scripts\uninstall-old-driver.exe') -Destination $scripts
-foreach ($driver in @('QuarborUniversalKeyboardDriverInstaller', 'QuarborVirtualMicrophoneDriverInstaller')) {
+foreach ($driver in @('QuarborUniversalKeyboardDriverInstaller')) {
     $driverFolder = Join-Path $vendor $driver
     New-Item -ItemType Directory -Path $driverFolder | Out-Null
     Get-ChildItem -LiteralPath (Join-Path $Source "vendor\$driver") -File |
