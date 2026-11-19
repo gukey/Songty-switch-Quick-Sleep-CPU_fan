@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly Keyboard keyboard;
     private readonly Tray tray;
     private readonly SodaMusic sodaMusic = new();
+    private readonly SodaFavoriteOverlay sodaFavoriteOverlay = new();
     private readonly AxonkeyModule? axonkey;
     private readonly FanWorker fan = new();
     private readonly XunleiService xunlei = new();
@@ -75,7 +76,14 @@ public partial class MainWindow : Window
             handled = true;
             if (wParam.ToInt64() == 4)
             {
-                if (hotkeyEditor is null) sodaMusic.Favorite();
+                if (hotkeyEditor is null)
+                {
+                    var screen = SodaFavoriteOverlay.ForegroundScreen();
+                    sodaMusic.ToggleFavorite((collected, title) => Dispatcher.BeginInvoke(() =>
+                    {
+                        if (!exiting) sodaFavoriteOverlay.Display(screen, collected, title);
+                    }));
+                }
                 return IntPtr.Zero;
             }
             if (hotkeyEditor is not null)
@@ -537,6 +545,7 @@ public partial class MainWindow : Window
         timer.Stop();
         axonkey?.Dispose();
         caps.Close();
+        sodaFavoriteOverlay.Close();
         xunlei.Dispose();
         fan.Dispose();
         keyboard.Dispose();

@@ -26,17 +26,17 @@ internal sealed class SodaMusic
         pending = Task.Run(CloseControlsAsync);
     }
 
-    internal void Favorite()
+    internal void ToggleFavorite(Action<bool, string> showResult)
     {
         if (favoritePending is { IsCompleted: false }) return;
-        favoritePending = Task.Run(() => SendAsync("favorite"));
+        favoritePending = Task.Run(() => SendAsync("toggle", showResult));
     }
 
     private Task CloseControlsAsync() => SendAsync("disable-taskbar-controls");
 
-    private async Task SendAsync(string command)
+    private async Task SendAsync(string command, Action<bool, string>? showResult = null)
     {
-        bool favorite = command == "favorite";
+        bool favorite = showResult is not null;
         try
         {
             if (!File.Exists(Path.Combine(Root, "SodaMusicLauncher.exe")) || !File.Exists(Session)) return;
@@ -72,8 +72,10 @@ internal sealed class SodaMusic
             if (response.RootElement.GetProperty("pid").GetInt32() != pid) return;
             if (favorite)
             {
-                if (response.RootElement.GetProperty("isCollected").GetBoolean())
-                    Data.Log("汽水音乐已确认当前曲目为收藏状态。");
+                bool collected = response.RootElement.GetProperty("isCollected").GetBoolean();
+                string title = response.RootElement.TryGetProperty("name", out var song) ? song.GetString() ?? "当前曲目" : "当前曲目";
+                Data.Log(collected ? "汽水音乐已确认收藏当前曲目。" : "汽水音乐已确认取消收藏当前曲目。");
+                showResult?.Invoke(collected, title);
                 return;
             }
             completedStart = started;
