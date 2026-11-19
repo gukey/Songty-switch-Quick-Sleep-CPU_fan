@@ -67,6 +67,8 @@ flowchart TD
 
 汽水音乐检查使用 `D:\Tools\Soda Music` 当前安装的 FavoriteBridge。`scripts/enable-soda-controls-bridge.py` 可给已有桥接增加固定的关闭播控命令。DisplaySwitcher 接到播放器启动后关闭任务栏播控及自动开启，并校验两个状态。
 
+RC003 默认配置的 TV 键单击发送内部热键 `Ctrl+Alt+F24`，由 DisplaySwitcher 通过 FavoriteBridge 收藏当前曲目。左侧菜单键用于静音。收藏操作不需要另外运行 Python 脚本。
+
 整合版托盘提供 **AxonKey 配置**。它将 `gukey/axonkey` 的 Windows 按键和鼠标映射、配置页面、命令行工具及 Quarbor 输入驱动安装资源内置在单文件里，共用 DisplaySwitcher 的启动、托盘和退出流程。语音转发、录音悬浮窗和虚拟麦克风安装器均已移除。设备配置仍存放于 `%APPDATA%\com.axonkey.app`，编辑后会保留。构建整合版时，先用 `build.ps1` 生成基础组件归档，再在具备 Rust、Node.js 和 Windows C++ 构建工具的环境中执行 `build-axonkey.ps1`，`-Source` 指向脚本指定提交的 `gukey/axonkey` 源码检出目录。
 
 F3 与 F4 都会迁移全部可控制的应用窗口。最小化窗口保持最小化，但再次打开时落在目标屏幕。点击托盘图标会把本工具显示在当前主屏。普通应用无法移动的窗口会记录错误并显示未全部归位，不会只凭主屏切换成功就报告全部完成。

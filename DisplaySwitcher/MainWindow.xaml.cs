@@ -73,6 +73,11 @@ public partial class MainWindow : Window
         if (message == 0x312)
         {
             handled = true;
+            if (wParam.ToInt64() == 4)
+            {
+                if (hotkeyEditor is null) sodaMusic.Favorite();
+                return IntPtr.Zero;
+            }
             if (hotkeyEditor is not null)
             {
                 switch (wParam.ToInt64())

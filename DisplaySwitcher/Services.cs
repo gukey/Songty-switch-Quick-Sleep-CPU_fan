@@ -146,6 +146,8 @@ internal sealed class Keyboard : IDisposable
         callback = OnKeyboard;
         OfficeRegistered = RegisterHotKey(window, 2, NoRepeat, 0x73);
         RecoveryRegistered = RegisterHotKey(window, 3, NoRepeat | 3, 0x78);
+        if (!RegisterHotKey(window, 4, NoRepeat | 3, 0x87))
+            Data.Log($"汽水音乐收藏热键注册失败：{Marshal.GetLastWin32Error()}");
         SetTv(settings.Key, settings.Modifiers);
         hook = SetWindowsHookExW(HookKeyboard, callback, GetModuleHandleW(null), 0);
         if (!SleepRegistered)
@@ -154,7 +156,7 @@ internal sealed class Keyboard : IDisposable
 
     internal bool SetTv(int nextKey, uint nextModifiers)
     {
-        if (nextKey == 0x73 && nextModifiers == 0 || nextKey == 0x78 && nextModifiers == 3)
+        if (nextKey == 0x73 && nextModifiers == 0 || (nextKey == 0x78 || nextKey == 0x87) && nextModifiers == 3)
             return false;
         if (TvRegistered && key == nextKey && modifiers == nextModifiers)
             return true;
@@ -213,7 +215,7 @@ internal sealed class Keyboard : IDisposable
             UnhookWindowsHookEx(hook);
             hook = IntPtr.Zero;
         }
-        for (int id = 1; id <= 3; id++)
+        for (int id = 1; id <= 4; id++)
             UnregisterHotKey(window, id);
     }
 
