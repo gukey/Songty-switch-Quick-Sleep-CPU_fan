@@ -7,7 +7,7 @@ param(
     [string]$Components = (Join-Path $PSScriptRoot 'build\components.zip'),
     [string]$Output = (Join-Path $PSScriptRoot 'build\axonkey-embedded-release'),
     [switch]$PackageOnly,
-    [string]$AxonKeyDefaults = (Join-Path $env:APPDATA 'com.axonkey.app\device-instances.json')
+    [string]$AxonKeyDefaults = ''
 )
 
 $ErrorActionPreference = 'Stop'

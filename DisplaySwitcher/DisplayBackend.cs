@@ -102,35 +102,41 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         Profile? gaming = Data.Read<Profile>("gaming.json");
         bool confirmedBefore = gaming?.Layout.Displays is [var savedTv] &&
             WindowsDisplays.Resolve(savedTv.Identity, [target]) is not null;
+        Profile? savedMode = !target.Active && confirmedBefore ? gaming : null;
         if (before.Extended)
             WindowPositions.Remember(before);
         bool started = false;
         try
         {
-            if (!target.Active)
+            Layout desired;
+            if (savedMode is not null)
             {
-                if (connected.Count(m => m.Identity.Product == target.Identity.Product) != 1)
-                    throw new InvalidOperationException("多台同型号设备，无法安全启用该电视。请先在 Windows 中启用它。");
                 started = true;
-                await RunTool("/enable", target.Identity.Product);
-                await WaitFor(layout =>
-                    WindowsDisplays.Resolve(tv, layout.Displays) is not null &&
-                    before.Displays.All(item => WindowsDisplays.Resolve(item.Identity, layout.Displays) is not null));
+                desired = await ApplySavedTvMode(savedMode, before, checkpoint, target.Identity);
             }
-            Layout active = native.Capture();
-            target = WindowsDisplays.Resolve(tv, active.Displays) ??
-                throw new InvalidOperationException("未检测到电视桌面输出。");
-            Layout desired = native.Single(active, target);
-            native.Validate(desired);
-            string activeConfig = started ? await CaptureConfig() : checkpoint;
-            string? candidate = confirmedBefore && gaming is not null && SameBindings(gaming.Layout, desired) &&
-                WindowsDisplays.Matches(gaming.Layout, desired) && SameKnownOutputs(gaming.Config, active)
-                ? gaming.Config
-                : active.Extended ? TvConfig(activeConfig, active, target) : null;
-            if (active.Displays.Length > 1)
+            else
             {
-                started = true;
-                await ApplyNativeFirst(desired, candidate, temporary: true);
+                if (!target.Active)
+                {
+                    EnsureUniqueTv(target.Identity);
+                    started = true;
+                    await EnableTvAlongside(target.Identity, before);
+                }
+                Layout active = native.Capture();
+                target = WindowsDisplays.Resolve(tv, active.Displays) ??
+                    throw new InvalidOperationException("未检测到电视桌面输出。");
+                desired = native.Single(active, target);
+                native.Validate(desired);
+                if (!WindowsDisplays.Matches(active, desired))
+                {
+                    string activeConfig = started ? await CaptureConfig() : checkpoint;
+                    string? candidate = confirmedBefore && gaming is not null && SameBindings(gaming.Layout, desired) &&
+                        WindowsDisplays.Matches(gaming.Layout, desired) && SameKnownOutputs(gaming.Config, active)
+                        ? gaming.Config
+                        : active.Extended ? TvConfig(activeConfig, active, target) : null;
+                    started = true;
+                    await ApplyNativeFirst(desired, candidate, temporary: true);
+                }
             }
             if (!confirmedBefore && !await confirm())
             {
@@ -157,6 +163,47 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
             throw;
         }
     });
+
+    private async Task<Layout> ApplySavedTvMode(Profile gaming, Layout before, string checkpoint, DisplayIdentity tv)
+    {
+        Data.Log($"使用已保存的电视单屏模式：{gaming.Layout.Displays[0].Hertz:0.##} Hz。");
+        try
+        {
+            Layout desired = native.Rebind(gaming.Layout);
+            await ApplyAndVerify(desired, null, temporary: true);
+            return desired;
+        }
+        catch (Exception error)
+        {
+            Data.Log($"电视单屏模式未稳定，重新绑定电视输出：{error.Message}");
+        }
+
+        Layout active = native.Capture();
+        if (WindowsDisplays.Resolve(tv, active.Displays) is null)
+        {
+            EnsureUniqueTv(tv);
+            if (!WindowsDisplays.Matches(active, before))
+                await ApplyNativeFirst(before, checkpoint);
+            await EnableTvAlongside(tv, before);
+        }
+        // Keep the saved resolution and refresh rate even if enabling the HDMI output chose another mode.
+        Layout rebound = native.Rebind(gaming.Layout, preferActiveSource: true);
+        await ApplyAndVerify(rebound, null, temporary: true);
+        return rebound;
+    }
+
+    private void EnsureUniqueTv(DisplayIdentity tv)
+    {
+        if (native.Connected().Count(m => m.Identity.Product == tv.Product) != 1)
+            throw new InvalidOperationException("无法唯一识别电视，请检查 HDMI 连接后重试。");
+    }
+
+    private async Task EnableTvAlongside(DisplayIdentity tv, Layout before)
+    {
+        await RunTool("/enable", tv.Product);
+        await WaitFor(layout => WindowsDisplays.Resolve(tv, layout.Displays) is not null &&
+            before.Displays.All(item => WindowsDisplays.Resolve(item.Identity, layout.Displays) is not null));
+    }
 
     public async Task<SwitchResult> RestoreOfficeAsync() => await Exclusive(async () =>
     {
@@ -322,7 +369,7 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
                     await RunTool("/LoadConfig", file);
                     return true;
                 });
-                await WaitFor(layout => WindowsDisplays.Matches(layout, desired));
+                await WaitFor(layout => WindowsDisplays.Matches(layout, desired), desired);
                 return;
             }
             catch (Exception error) { Data.Log($"快照应用未通过验证，尝试原生布局：{error.Message}"); }
@@ -330,22 +377,32 @@ public sealed class MultiMonitorToolBackend(WindowsDisplays native) : IDisplayBa
         desired = native.Rebind(desired);
         native.Validate(desired);
         native.Apply(desired, temporary);
-        await WaitFor(layout => WindowsDisplays.Matches(layout, desired));
+        await WaitFor(layout => WindowsDisplays.Matches(layout, desired), desired);
     }
 
-    private async Task WaitFor(Func<Layout, bool> predicate)
+    private async Task WaitFor(Func<Layout, bool> predicate, Layout? expected = null)
     {
         int matches = 0;
+        Layout? last = null;
         for (int attempt = 0; attempt < 14; attempt++)
         {
             await Task.Delay(350);
-            try { matches = predicate(native.Capture()) ? matches + 1 : 0; }
+            try
+            {
+                last = native.Capture();
+                matches = predicate(last) ? matches + 1 : 0;
+            }
             catch (Exception error) { Data.Log($"等待显示路径：{error.Message}"); matches = 0; }
             if (matches >= 2)
                 return;
         }
+        if (expected is not null && last is not null)
+            Data.Log($"显示布局校验超时，预期：{Describe(expected)}；实际：{Describe(last)}。");
         throw new InvalidOperationException("Windows 实际显示布局与预期不一致。");
     }
+
+    private static string Describe(Layout layout) => string.Join("、", layout.Displays.Select(display =>
+        $"{display.Identity.Product} {display.Width}×{display.Height} {display.Hertz:0.##} Hz ({display.X},{display.Y})"));
 
     private static string? TvConfig(string config, Layout active, Monitor target)
     {

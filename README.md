@@ -56,14 +56,14 @@ flowchart TD
 可在 GitHub Releases 下载单文件 `DisplaySwitcher.exe`。所需运行时、温控助手和 MultiMonitorTool 均已内置，首次启动自动释放到 `%LOCALAPPDATA%\DisplaySwitcher\components`，按内容校验并复用。默认程序图标为源码中的 `DisplaySwitcher/Assets/imageres_1405.ico`。
 
 1. 下载 **DisplaySwitcher.exe** 并双击运行。自行构建时，单文件程序生成在 **Release** 目录。
-2. 运行 **DisplaySwitcher.exe**。程序默认收进托盘。左键单击托盘图标打开窗口，重复运行 EXE 会保持托盘状态。如果图标在折叠区，可在 Windows 任务栏设置里设为常显。
+2. 双击 **DisplaySwitcher.exe** 启动程序并打开主窗口。程序已在托盘运行时，再双击 EXE 或左键单击托盘图标即可打开现有窗口。开机自启时静默进入托盘。
 3. 处于平时使用的多屏扩展布局时，可直接按 **F3**。程序会识别唯一的 **SONY TV**，每次切换前都会读取并记录 Windows 当前的扩展排列。首次准备办公布局时会生成桌面快捷方式「恢复办公显示」。
 4. 打开电视并选中实际连接的 HDMI 输入。按 F3 静默切换，不弹出主界面或画面确认窗口。关闭主界面后继续在托盘运行，右键托盘图标点「退出」结束程序。
 5. 直接在 Windows「设置 → 系统 → 显示」中调整办公排列或主屏即可。扩展状态下按 **F4** 会保留当前排列。如果有多台索尼电视，可手动选定目标并点「保存设置」。下拉框中的 **DISPLAYn** 是 Windows 的输出名，悬停可查看设备身份。
 
 ## 快捷键和托盘
 
-本机单文件版在打包时读取当前 AxonKey 设备映射，首次运行且本机无配置时写入默认映射。后续编辑以本机保存的配置为准。同一台 RC003 重新配对后使用稳定的蓝牙身份匹配设备及驱动。默认映射来自打包机的个人配置文件，保存在本机 EXE 中。公开构建可传入 `-AxonKeyDefaults ''`，或使用不含个人数据的配置模板。
+公开版默认从本机已有的 AxonKey 配置读取设备映射。新设备配对后可在 AxonKey 配置中设置按键。如需面向特定设备制作本机专用 EXE，可以在打包时用 `-AxonKeyDefaults` 指定配置文件，程序仅在目标电脑尚无配置时写入该映射。
 
 汽水音乐检查使用 `D:\Tools\Soda Music` 当前安装的 FavoriteBridge。`scripts/enable-soda-controls-bridge.py` 可给已有桥接增加固定的关闭播控命令。DisplaySwitcher 接到播放器启动后关闭任务栏播控及自动开启，并校验两个状态。
 

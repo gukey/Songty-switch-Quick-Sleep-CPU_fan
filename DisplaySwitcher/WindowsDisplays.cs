@@ -274,7 +274,7 @@ public sealed class WindowsDisplays
         return result;
     }
 
-    public Layout Rebind(Layout layout)
+    public Layout Rebind(Layout layout, bool preferActiveSource = false)
     {
         var (availablePaths, modes) = Query(1);
         var available = availablePaths.Where(path => path.Target.Available != 0).Select(path =>
@@ -302,7 +302,8 @@ public sealed class WindowsDisplays
                 : choices.Where(choice => !assigned.ContainsValue((choice.Source.Adapter, choice.Source.Id))).ToArray();
             if (valid.Length == 0)
                 throw new InvalidOperationException("当前显卡无法分配已保存的显示路径。");
-            var picked = valid.OrderByDescending(choice => (choice.Source.Adapter, choice.Source.Id).Equals(oldSource))
+            var picked = valid.OrderByDescending(choice => preferActiveSource && (choice.Flags & Active) != 0)
+                .ThenByDescending(choice => (choice.Source.Adapter, choice.Source.Id).Equals(oldSource))
                 .ThenByDescending(choice => (choice.Flags & Active) != 0).First();
             if ((path.Flags & Virtual) != (picked.Flags & Virtual))
                 throw new InvalidOperationException("显示驱动的虚拟模式能力已变化，请重新保存布局。");

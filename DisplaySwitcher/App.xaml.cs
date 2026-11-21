@@ -21,6 +21,7 @@ public partial class App : Application
         System.Windows.Media.RenderOptions.ProcessRenderMode = System.Windows.Interop.RenderMode.SoftwareOnly;
         bool restore = Array.Exists(args.Args, value => value == "--restore-office");
         bool openAxonkey = Array.Exists(args.Args, value => value == "--axonkey-settings");
+        bool show = args.Args.Length == 0 || Array.Exists(args.Args, value => value == "--show");
         try
         {
             instance = new Mutex(true, @"Local\" + InstanceName, out bool primary);
@@ -30,7 +31,7 @@ public partial class App : Application
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
                 await client.ConnectAsync(2500);
                 using var writer = new StreamWriter(client);
-                await writer.WriteLineAsync(restore ? "office" : openAxonkey ? "axonkey-settings" : "noop");
+                await writer.WriteLineAsync(restore ? "office" : openAxonkey ? "axonkey-settings" : show ? "show" : "noop");
                 Shutdown();
                 return;
             }
@@ -52,6 +53,7 @@ public partial class App : Application
             MainWindow = main;
             _ = Listen();
             if (openAxonkey) main.OpenAxonkeySettings();
+            else if (show) main.Reveal();
         }
         catch (Exception error)
         {
@@ -78,6 +80,8 @@ public partial class App : Application
                     await Dispatcher.InvokeAsync(() => main?.Emergency());
                 else if (command == "axonkey-settings")
                     await Dispatcher.InvokeAsync(() => main?.OpenAxonkeySettings());
+                else if (command == "show")
+                    await Dispatcher.InvokeAsync(() => main?.Reveal());
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { return; }
             catch (Exception error)
